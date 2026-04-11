@@ -7,7 +7,30 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "format": "prettier -w .",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "build:mac": "electron-vite build && electron-builder --mac --publish never",
+    "build:win": "electron-vite build && electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "com.virtulinked.ai",
+    "productName": "VirtuLinked AI",
+    "directories": {
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.business",
+      "icon": "build/icon.png",
+      "target": ["dmg"]
+    },
+    "dmg": {
+      "background": "build/background.png",
+      "iconSize": 128,
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ],
+      "window": { "width": 540, "height": 380 }
+    }
   },
   "dependencies": {
     "@azure/msal-node": "^2.16.2",

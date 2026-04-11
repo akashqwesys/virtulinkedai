@@ -1,0 +1,37 @@
+name: Build macOS DMG
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS app (DMG)
+        run: npm run build:mac
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtuLinkedAI-macOS-DMG
+          path: dist/*.dmg # Electron-builder typically outputs to dist/ or out/ by default if unconfigured, wait, actually we have out/ but `build/mac` or `dist/` is the default for packaged output. Let's make sure electron-builder outputs it properly, usually the default is `dist/`. But wait, in `package.json` we usually set `build.directories.output`, if not it is `dist`.
+          # I better update this path correctly to `dist/*.dmg`. Let's use `dist/*.dmg` and `out/make/**/*.dmg` as fallbacks if needed, but `dist/*.dmg` is electron-builder default.
+          # Actually let's use `dist/*.dmg` based on electron-builder default.
