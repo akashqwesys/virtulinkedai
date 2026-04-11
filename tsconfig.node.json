@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./out/main",
+    "lib": ["ES2022", "dom", "dom.iterable"],
+    "types": ["node"]
+  },
+  "include": ["src/main/**/*", "src/shared/**/*"]
+}

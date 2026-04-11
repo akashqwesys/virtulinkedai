@@ -1,0 +1,49 @@
+{
+  "name": "virtulinked-ai",
+  "version": "1.0.0",
+  "description": "VirtuLinked AI Desktop Application",
+  "main": "out/main/index.js",
+  "scripts": {
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "format": "prettier -w .",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^2.16.2",
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.6",
+    "electron-store": "^8.2.0",
+    "express": "^5.2.1",
+    "node-schedule": "^2.1.1",
+    "pdf-parse": "^2.4.5",
+    "puppeteer-core": "^23.11.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config": "^1.0.2",
+    "@electron-toolkit/eslint-config-ts": "^2.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.1",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.1.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "eslint": "^9.16.0",
+    "eslint-plugin-react": "^7.37.2",
+    "prettier": "^3.8.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

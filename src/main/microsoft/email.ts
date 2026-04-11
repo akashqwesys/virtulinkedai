@@ -1,0 +1,445 @@
+/**
+ * Microsoft 365 Integration - Email & Calendar via Graph API
+ *
+ * Handles OAuth2 authentication, email sending, and meeting booking
+ * using the Microsoft Graph API with MSAL for desktop apps.
+ */
+
+import {
+  PublicClientApplication,
+  InteractionRequiredAuthError,
+} from "@azure/msal-node";
+import { Client } from "@microsoft/microsoft-graph-client";
+import type {
+  AppSettings,
+  LinkedInProfile,
+  EmailRecord,
+} from "../../shared/types";
+import { getDatabase, logActivity } from "../storage/database";
+import { v4 as uuid } from "uuid";
+import { vaultCachePlugin } from "./cachePlugin";
+
+let msalInstance: PublicClientApplication | null = null;
+let graphClient: Client | null = null;
+let accessToken: string | null = null;
+
+/**
+ * Initialize MSAL for desktop OAuth2 (PKCE flow)
+ */
+export function initializeMSAL(settings: AppSettings["microsoft"]): void {
+  if (!settings.clientId || !settings.tenantId) {
+    throw new Error("Microsoft client ID and tenant ID are required");
+  }
+
+  msalInstance = new PublicClientApplication({
+    auth: {
+      clientId: settings.clientId,
+      authority: `https://login.microsoftonline.com/${settings.tenantId}`,
+    },
+    cache: {
+      cachePlugin: vaultCachePlugin,
+    },
+  });
+}
+
+/**
+ * Authenticate with Microsoft (interactive login)
+ * Opens a browser window for the user to sign in
+ */
+export async function authenticate(
+  settings: AppSettings["microsoft"],
+): Promise<{ success: boolean; userEmail?: string; error?: string }> {
+  try {
+    if (!msalInstance) {
+      initializeMSAL(settings);
+    }
+
+    // Try silent token acquisition first (cached token)
+    const accounts = await msalInstance!.getTokenCache().getAllAccounts();
+    let tokenResponse;
+
+    if (accounts.length > 0) {
+      try {
+        tokenResponse = await msalInstance!.acquireTokenSilent({
+          account: accounts[0],
+          scopes: settings.scopes,
+        });
+      } catch (silentError) {
+        if (silentError instanceof InteractionRequiredAuthError) {
+          // Token expired, need interactive login
+          tokenResponse = await msalInstance!.acquireTokenInteractive({
+            scopes: settings.scopes,
+            openBrowser: async (url) => {
+              // Open in system browser
+              const { shell } = await import("electron");
+              await shell.openExternal(url);
+            },
+            successTemplate:
+              "<h1>Authentication Successful</h1><p>You can close this window.</p>",
+            errorTemplate:
+              "<h1>Authentication Failed</h1><p>Please try again.</p>",
+          });
+        } else {
+          throw silentError;
+        }
+      }
+    } else {
+      // No cached accounts, interactive login required
+      tokenResponse = await msalInstance!.acquireTokenInteractive({
+        scopes: settings.scopes,
+        openBrowser: async (url) => {
+          const { shell } = await import("electron");
+          await shell.openExternal(url);
+        },
+        successTemplate:
+          "<h1>Authentication Successful</h1><p>You can close this window.</p>",
+        errorTemplate: "<h1>Authentication Failed</h1><p>Please try again.</p>",
+      });
+    }
+
+    if (tokenResponse) {
+      accessToken = tokenResponse.accessToken;
+
+      // Initialize Graph client
+      graphClient = Client.init({
+        authProvider: (done) => {
+          done(null, accessToken!);
+        },
+      });
+
+      const userEmail = tokenResponse.account?.username || "";
+      logActivity("microsoft_auth_success", "microsoft", { userEmail });
+
+      return { success: true, userEmail };
+    }
+
+    return { success: false, error: "No token response received" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    logActivity(
+      "microsoft_auth_failed",
+      "microsoft",
+      { error: message },
+      "error",
+      message,
+    );
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Send an email via O365 mailbox using Graph API
+ */
+export async function sendEmail(
+  to: string,
+  subject: string,
+  body: string,
+  options: {
+    isHtml?: boolean;
+    cc?: string[];
+    bcc?: string[];
+    saveToSentItems?: boolean;
+    replyTo?: string;
+  } = {},
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  if (!graphClient) {
+    return {
+      success: false,
+      error: "Not authenticated with Microsoft. Please sign in first.",
+    };
+  }
+
+  const { isHtml = true, cc = [], bcc = [], saveToSentItems = true } = options;
+
+  try {
+    const mailPayload = {
+      message: {
+        subject,
+        body: {
+          contentType: isHtml ? "HTML" : "Text",
+          content: body,
+        },
+        toRecipients: [{ emailAddress: { address: to } }],
+        ccRecipients: cc.map((addr) => ({ emailAddress: { address: addr } })),
+        bccRecipients: bcc.map((addr) => ({ emailAddress: { address: addr } })),
+      },
+      saveToSentItems,
+    };
+
+    await graphClient.api("/me/sendMail").post(mailPayload);
+
+    logActivity("email_sent", "microsoft", {
+      to,
+      subject,
+      bodyLength: body.length,
+      isHtml,
+    });
+
+    return { success: true, messageId: uuid() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    logActivity(
+      "email_send_failed",
+      "microsoft",
+      {
+        to,
+        subject,
+        error: message,
+      },
+      "error",
+      message,
+    );
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Send a personalized email to a lead
+ * Uses email template + AI-generated content
+ */
+export async function sendPersonalizedLeadEmail(
+  profile: LinkedInProfile,
+  emailContent: { subject: string; body: string },
+  recipientEmail: string,
+  type: "intro" | "follow_up" | "welcome" | "meeting_confirm",
+  settings: AppSettings,
+): Promise<EmailRecord | null> {
+  const emailId = uuid();
+  const trackingDomain = settings.analytics?.trackingDomain;
+
+  let processedBody = emailContent.body;
+
+  // 1. Wrap hyperlinks with tracking if domain is configured
+  if (trackingDomain) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    processedBody = emailContent.body.replace(urlRegex, (url) => {
+      const encodedUrl = encodeURIComponent(url);
+      const trackingUrl = `${trackingDomain}/track/click?eid=${emailId}&url=${encodedUrl}`;
+      return `<a href="${trackingUrl}">${url}</a>`;
+    });
+  }
+
+  // Wrap body in a clean HTML template
+  let htmlBody = `
+    <div style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+      ${processedBody
+        .split("\n")
+        .map((line) =>
+          line.trim()
+            ? `<p style="margin: 0 0 16px 0; line-height: 1.6;">${line}</p>`
+            : "",
+        )
+        .join("")}
+    </div>
+  `;
+
+  // 2. Embed invisible tracking pixel
+  if (trackingDomain) {
+    const pixelUrl = `${trackingDomain}/track/open?eid=${emailId}`;
+    htmlBody += `<img src="${pixelUrl}" width="1" height="1" style="display:none !important;" />`;
+  }
+
+  const result = await sendEmail(
+    recipientEmail,
+    emailContent.subject,
+    htmlBody,
+    {
+      isHtml: true,
+      saveToSentItems: true,
+    },
+  );
+
+  if (result.success) {
+    const emailRecord: EmailRecord = {
+      id: emailId,
+      leadId: profile.id,
+      subject: emailContent.subject,
+      body: emailContent.body,
+      type,
+      sentAt: new Date().toISOString(),
+      openedAt: null,
+      clickedAt: null,
+      repliedAt: null,
+    };
+
+    // Save email to database
+    const db = getDatabase();
+    db.prepare(`
+      INSERT INTO emails (id, lead_id, subject, body, type, sent_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      emailRecord.id,
+      emailRecord.leadId,
+      emailRecord.subject,
+      emailRecord.body,
+      emailRecord.type,
+      emailRecord.sentAt
+    );
+
+    return emailRecord;
+  }
+
+  return null;
+}
+
+/**
+ * Create a Microsoft Teams meeting
+ */
+export async function createMeeting(
+  attendeeEmail: string,
+  attendeeName: string,
+  options: {
+    subject?: string;
+    startTime: Date;
+    durationMinutes?: number;
+    body?: string;
+    isOnline?: boolean;
+  },
+): Promise<{
+  success: boolean;
+  meetingUrl?: string;
+  eventId?: string;
+  error?: string;
+}> {
+  if (!graphClient) {
+    return { success: false, error: "Not authenticated with Microsoft" };
+  }
+
+  const {
+    subject = `Meeting with ${attendeeName}`,
+    startTime,
+    durationMinutes = 30,
+    body = "",
+    isOnline = true,
+  } = options;
+
+  const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+
+  try {
+    const event = await graphClient.api("/me/events").post({
+      subject,
+      body: {
+        contentType: "HTML",
+        content:
+          body ||
+          `<p>Looking forward to our conversation, ${attendeeName}!</p>`,
+      },
+      start: {
+        dateTime: startTime.toISOString(),
+        timeZone: "Asia/Kolkata",
+      },
+      end: {
+        dateTime: endTime.toISOString(),
+        timeZone: "Asia/Kolkata",
+      },
+      location: {
+        displayName: isOnline ? "Microsoft Teams" : "",
+      },
+      attendees: [
+        {
+          emailAddress: {
+            address: attendeeEmail,
+            name: attendeeName,
+          },
+          type: "required",
+        },
+      ],
+      isOnlineMeeting: isOnline,
+      onlineMeetingProvider: isOnline ? "teamsForBusiness" : undefined,
+      allowNewTimeProposals: true,
+    });
+
+    const meetingUrl = event.onlineMeeting?.joinUrl || event.webLink || "";
+
+    logActivity("meeting_created", "microsoft", {
+      attendeeEmail,
+      attendeeName,
+      subject,
+      startTime: startTime.toISOString(),
+      durationMinutes,
+      meetingUrl,
+      eventId: event.id,
+    });
+
+    return {
+      success: true,
+      meetingUrl,
+      eventId: event.id,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    logActivity(
+      "meeting_create_failed",
+      "microsoft",
+      {
+        attendeeEmail,
+        error: message,
+      },
+      "error",
+      message,
+    );
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Get available time slots for a meeting
+ */
+export async function getAvailableSlots(
+  dateRange: { start: Date; end: Date },
+  durationMinutes: number = 30,
+): Promise<Array<{ start: Date; end: Date }>> {
+  if (!graphClient) return [];
+
+  try {
+    const response = await graphClient.api("/me/calendar/getSchedule").post({
+      schedules: ["me"],
+      startTime: {
+        dateTime: dateRange.start.toISOString(),
+        timeZone: "Asia/Kolkata",
+      },
+      endTime: {
+        dateTime: dateRange.end.toISOString(),
+        timeZone: "Asia/Kolkata",
+      },
+      availabilityViewInterval: durationMinutes,
+    });
+
+    // Parse availability and find free slots
+    const availableSlots: Array<{ start: Date; end: Date }> = [];
+    const scheduleInfo = response?.value?.[0];
+
+    if (scheduleInfo?.availabilityView) {
+      const view = scheduleInfo.availabilityView as string;
+      const slotStart = new Date(dateRange.start);
+
+      for (let i = 0; i < view.length; i++) {
+        if (view[i] === "0") {
+          // 0 = free
+          const start = new Date(
+            slotStart.getTime() + i * durationMinutes * 60000,
+          );
+          const end = new Date(start.getTime() + durationMinutes * 60000);
+
+          // Only include slots during working hours (9-18 IST)
+          const hour = start.getHours();
+          if (hour >= 9 && hour < 18) {
+            availableSlots.push({ start, end });
+          }
+        }
+      }
+    }
+
+    return availableSlots;
+  } catch (error) {
+    logActivity(
+      "available_slots_failed",
+      "microsoft",
+      {
+        error: error instanceof Error ? error.message : "Unknown",
+      },
+      "error",
+    );
+    return [];
+  }
+}
