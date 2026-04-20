@@ -51,8 +51,9 @@ export async function checkLoginStatus(): Promise<{
   try {
     let currentUrl = page.url();
 
-    // Force navigation ONLY if not on linkedin or explicitly on login pages
-    if (!currentUrl.includes("linkedin.com") || currentUrl.includes("/login") || currentUrl.includes("/signup")) {
+    // Force navigation ONLY if not on linkedin
+    // Do NOT navigate away if they are on /login or /signup as it interrupts the user typing credentials
+    if (!currentUrl.includes("linkedin.com")) {
       await navigateTo(LINKEDIN_URL);
       await pageLoadDelay();
       currentUrl = page.url();
