@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld("api", {
     authenticate: createIpcInvoke(IPC_CHANNELS.EMAIL_AUTH),
     send: createIpcInvoke(IPC_CHANNELS.EMAIL_SEND),
     getStatus: createIpcInvoke(IPC_CHANNELS.EMAIL_STATUS),
+    disconnect: createIpcInvoke("email:disconnect"),
   },
 
   // Calendar

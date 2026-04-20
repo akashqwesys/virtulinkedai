@@ -37,6 +37,27 @@ interface EngineState {
   lastError: string | null;
 }
 
+let browserLocked = false;
+export function setBrowserLocked(locked: boolean) {
+  browserLocked = locked;
+}
+export function isBrowserLocked() {
+  return browserLocked;
+}
+export async function waitForBrowserLock(): Promise<void> {
+  const timeoutMs = 120000; // wait up to 2 minutes
+  const start = Date.now();
+  if (browserLocked) {
+    console.log("[Engine] Browser is locked by another task. Yielding execution sequence...");
+  }
+  while (browserLocked && Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  if (browserLocked) {
+     console.warn("[Engine] Mutex timeout reached (120s), assuming lock is stale or a task hung.");
+  }
+}
+
 const state: EngineState = {
   browser: null,
   page: null,
@@ -106,11 +127,11 @@ export async function launchBrowser(): Promise<{
       // Browser is alive but no valid page — create one
       state.page = pages[0] || (await state.browser.newPage());
       await applyStealthMeasures(state.page);
-      // console.log("[Engine] Recovered browser — page was null, created new page.");
+      console.log("[Engine] Recovered browser — page was null, created new page.");
       return { success: true };
     } catch (e) {
       // Browser reference is stale / WebSocket disconnected
-      // console.log("[Engine] Stale browser reference detected — forcing relaunch.");
+      console.log("[Engine] Stale browser reference detected — forcing relaunch.");
       state.browser = null;
       state.page = null;
       state.status = "idle";
@@ -134,13 +155,13 @@ export async function launchBrowser(): Promise<{
         const port = lines[0].trim();
         const browserWSEndpoint = `ws://127.0.0.1:${port}${lines[1].trim()}`;
         
-        // console.log(`[Engine] Found running Chrome at port ${port}. Reconnecting...`);
+        console.log(`[Engine] Found running Chrome at port ${port}. Reconnecting...`);
         state.browser = (await puppeteer.connect({
           browserWSEndpoint,
           defaultViewport: null
         })) as unknown as Browser;
         
-        // console.log("[Engine] Successfully reconnected to existing Chrome window.");
+        console.log("[Engine] Successfully reconnected to existing Chrome window.");
       } catch (e) {
         // console.log("[Engine] Could not reconnect. The lock is stale. Cleaning up...");
         try { fs.unlinkSync(activePortFile); } catch (_) {}

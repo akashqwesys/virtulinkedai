@@ -5,12 +5,25 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "general" | "limits" | "ai" | "microsoft" | "chatbot"
+    "general" | "limits" | "ai" | "microsoft" | "chatbot" | "enrichment"
   >("general");
+
+  // Microsoft 365 connection state
+  const [msStatus, setMsStatus] = useState<{ connected: boolean; userEmail?: string } | null>(null);
+  const [msConnecting, setMsConnecting] = useState(false);
+  const [msDisconnecting, setMsDisconnecting] = useState(false);
+
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  // Check MS connection status whenever the microsoft tab is opened
+  useEffect(() => {
+    if (activeTab === "microsoft") {
+      window.api.email.getStatus().then((s: any) => setMsStatus(s)).catch(() => setMsStatus({ connected: false }));
+    }
+  }, [activeTab]);
 
   async function loadSettings() {
     try {
@@ -37,7 +50,6 @@ export default function Settings() {
     try {
       const result = await window.api.linkedin.logout();
       if (result?.success) {
-        // Show success notification or feedback if needed
         console.log("Successfully logged out from LinkedIn.");
       } else {
         console.error("Logout failed:", result?.error);
@@ -47,6 +59,37 @@ export default function Settings() {
     }
     setLoggingOut(false);
   }
+
+  async function handleConnectMicrosoft() {
+    // Save settings first so Client ID / Tenant ID are persisted before auth
+    await saveSettings();
+    setMsConnecting(true);
+    try {
+      const result = await window.api.email.authenticate();
+      if (result?.success) {
+        setMsStatus({ connected: true, userEmail: result.userEmail });
+      } else {
+        alert("Microsoft login failed: " + (result?.error || "Unknown error"));
+        setMsStatus({ connected: false });
+      }
+    } catch (e: any) {
+      alert("Microsoft login error: " + e?.message);
+      setMsStatus({ connected: false });
+    }
+    setMsConnecting(false);
+  }
+
+  async function handleDisconnectMicrosoft() {
+    setMsDisconnecting(true);
+    try {
+      await window.api.email.disconnect();
+      setMsStatus({ connected: false });
+    } catch (e) {
+      console.error("Disconnect error", e);
+    }
+    setMsDisconnecting(false);
+  }
+
 
   function updateSettings(path: string, value: any) {
     setSettings((prev: any) => {
@@ -91,6 +134,7 @@ export default function Settings() {
     { key: "ai", label: "🤖 AI Engine" },
     { key: "microsoft", label: "📧 Microsoft 365" },
     { key: "chatbot", label: "💬 Chatbot" },
+    { key: "enrichment", label: "🔍 Enrichment" },
   ] as const;
 
   return (
@@ -517,31 +561,103 @@ export default function Settings() {
               />
             </div>
 
+            {/* Connection Status Panel */}
             <div
               style={{
-                padding: "16px",
-                background: "rgba(99, 102, 241, 0.08)",
-                borderRadius: "8px",
-                border: "1px solid rgba(99, 102, 241, 0.25)",
+                padding: "20px",
+                background: msStatus?.connected
+                  ? "rgba(34, 197, 94, 0.08)"
+                  : "rgba(99, 102, 241, 0.08)",
+                borderRadius: "12px",
+                border: `1px solid ${msStatus?.connected ? "rgba(34, 197, 94, 0.3)" : "rgba(99, 102, 241, 0.25)"}`,
+                marginTop: "8px",
               }}
             >
-              <div
-                style={{
-                  fontWeight: 600,
-                  marginBottom: "8px",
-                  color: "var(--accent-primary)",
-                }}
-              >
-                ℹ️ Required API Permissions
+              {/* Status header row */}
+              <div className="flex items-center gap-3" style={{ marginBottom: "16px" }}>
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: msStatus === null
+                      ? "var(--text-muted)"
+                      : msStatus.connected
+                      ? "#22c55e"
+                      : "#ef4444",
+                    flexShrink: 0,
+                    boxShadow: msStatus?.connected ? "0 0 8px rgba(34,197,94,0.6)" : undefined,
+                  }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: "14px" }}>
+                    {msStatus === null
+                      ? "Checking status..."
+                      : msStatus.connected
+                      ? "✅ Connected to Microsoft 365"
+                      : "❌ Not Connected"}
+                  </div>
+                  {msStatus?.connected && msStatus.userEmail && (
+                    <div className="text-sm text-muted" style={{ marginTop: "2px" }}>
+                      Signed in as <strong>{msStatus.userEmail}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-3">
+                {!msStatus?.connected ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleConnectMicrosoft}
+                    disabled={msConnecting || !settings.microsoft.clientId || !settings.microsoft.tenantId}
+                  >
+                    {msConnecting ? "⏳ Connecting..." : "🔗 Connect Microsoft 365"}
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ color: "var(--accent-danger)" }}
+                    onClick={handleDisconnectMicrosoft}
+                    disabled={msDisconnecting}
+                  >
+                    {msDisconnecting ? "⏳ Disconnecting..." : "🔌 Disconnect"}
+                  </button>
+                )}
+              </div>
+
+              {!settings.microsoft.clientId || !settings.microsoft.tenantId ? (
+                <div className="text-sm text-muted" style={{ marginTop: "12px" }}>
+                  ⚠️ Enter your <strong>Client ID</strong> and <strong>Tenant ID</strong> above,
+                  then click Save Settings before connecting.
+                </div>
+              ) : null}
+            </div>
+
+            {/* Required Permissions Info */}
+            <div
+              style={{
+                padding: "14px",
+                background: "rgba(99, 102, 241, 0.05)",
+                borderRadius: "8px",
+                border: "1px solid rgba(99, 102, 241, 0.15)",
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: "6px", color: "var(--accent-primary)", fontSize: "13px" }}>
+                ℹ️ Required API Permissions (Azure Portal)
               </div>
               <div className="text-sm text-muted">
-                In Azure Portal, add these delegated permissions:{" "}
+                Under <strong>API Permissions → Microsoft Graph → Delegated</strong>, add:{" "}
                 <strong>Mail.Send</strong>, <strong>Mail.ReadWrite</strong>,{" "}
-                <strong>Calendars.ReadWrite</strong>, <strong>User.Read</strong>
+                <strong>Calendars.ReadWrite</strong>, <strong>User.Read</strong>,{" "}
+                <strong>offline_access</strong>
               </div>
             </div>
           </div>
         )}
+
+
 
         {/* Chatbot */}
         {activeTab === "chatbot" && (
@@ -643,6 +759,79 @@ export default function Settings() {
               <label className="text-sm">
                 Auto-handoff to human on negative sentiment detection
               </label>
+            </div>
+          </div>
+        )}
+
+        {/* Enrichment */}
+        {activeTab === "enrichment" && (
+          <div className="card animate-fadeIn">
+            <h3 className="card-title" style={{ marginBottom: "8px" }}>
+              Email Enrichment
+            </h3>
+            <p className="text-sm text-muted" style={{ marginBottom: "24px" }}>
+              Automatically find business emails for leads who don't share
+              contact info. Uses Hunter.io or Apollo.io APIs.
+            </p>
+
+            <div className="input-group">
+              <label className="input-label">Enrichment Provider</label>
+              <select
+                className="input"
+                value={settings.enrichment?.provider || "none"}
+                onChange={(e) =>
+                  updateSettings("enrichment.provider", e.target.value)
+                }
+              >
+                <option value="none">None (disabled)</option>
+                <option value="hunter">Hunter.io</option>
+                <option value="apollo">Apollo.io</option>
+              </select>
+            </div>
+
+            {settings.enrichment?.provider !== "none" && (
+              <div className="input-group">
+                <label className="input-label">
+                  {settings.enrichment?.provider === "hunter"
+                    ? "Hunter.io API Key"
+                    : "Apollo.io API Key"}
+                </label>
+                <input
+                  className="input"
+                  type="password"
+                  value={settings.enrichment?.apiKey || ""}
+                  onChange={(e) =>
+                    updateSettings("enrichment.apiKey", e.target.value)
+                  }
+                  placeholder="Paste your API key here"
+                />
+              </div>
+            )}
+
+            <div
+              style={{
+                padding: "16px",
+                background: "rgba(99, 102, 241, 0.08)",
+                borderRadius: "8px",
+                border: "1px solid rgba(99, 102, 241, 0.25)",
+                marginTop: "16px",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 600,
+                  marginBottom: "8px",
+                  color: "var(--accent-primary)",
+                }}
+              >
+                ℹ️ How it works
+              </div>
+              <div className="text-sm text-muted">
+                When a connection request is pending for more than 3 days and
+                we don't have an email, the system will call the configured
+                provider to find a business email, then send a personalized
+                follow-up via Microsoft 365.
+              </div>
             </div>
           </div>
         )}

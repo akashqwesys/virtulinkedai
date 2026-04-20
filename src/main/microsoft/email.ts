@@ -22,6 +22,7 @@ import { vaultCachePlugin } from "./cachePlugin";
 let msalInstance: PublicClientApplication | null = null;
 let graphClient: Client | null = null;
 let accessToken: string | null = null;
+let authenticatedUserEmail: string | null = null;
 
 /**
  * Initialize MSAL for desktop OAuth2 (PKCE flow)
@@ -107,10 +108,10 @@ export async function authenticate(
         },
       });
 
-      const userEmail = tokenResponse.account?.username || "";
-      logActivity("microsoft_auth_success", "microsoft", { userEmail });
+      authenticatedUserEmail = tokenResponse.account?.username || "";
+      logActivity("microsoft_auth_success", "microsoft", { userEmail: authenticatedUserEmail });
 
-      return { success: true, userEmail };
+      return { success: true, userEmail: authenticatedUserEmail };
     }
 
     return { success: false, error: "No token response received" };
@@ -125,6 +126,77 @@ export async function authenticate(
     );
     return { success: false, error: message };
   }
+}
+
+/**
+ * Get current Microsoft 365 connection status without triggering a new login.
+ * Tries to silently restore a cached token on first call.
+ */
+export async function getConnectionStatus(
+  settings: AppSettings["microsoft"],
+): Promise<{ connected: boolean; userEmail?: string }> {
+  try {
+    // If we already have a token in memory, return immediately
+    if (accessToken && authenticatedUserEmail) {
+      return { connected: true, userEmail: authenticatedUserEmail };
+    }
+
+    // Try to restore from token cache (silent — no browser popup)
+    if (!msalInstance) {
+      if (!settings.clientId || !settings.tenantId) {
+        return { connected: false };
+      }
+      initializeMSAL(settings);
+    }
+
+    const accounts = await msalInstance!.getTokenCache().getAllAccounts();
+    if (accounts.length === 0) return { connected: false };
+
+    const tokenResponse = await msalInstance!.acquireTokenSilent({
+      account: accounts[0],
+      scopes: settings.scopes,
+    });
+
+    if (tokenResponse) {
+      accessToken = tokenResponse.accessToken;
+      authenticatedUserEmail = tokenResponse.account?.username || "";
+
+      graphClient = Client.init({
+        authProvider: (done) => done(null, accessToken!),
+      });
+
+      return { connected: true, userEmail: authenticatedUserEmail };
+    }
+  } catch {
+    // Silent token acquisition failed — user needs to log in interactively
+  }
+
+  return { connected: false };
+}
+
+/**
+ * Disconnect Microsoft 365 — clears all cached tokens and resets in-memory state.
+ */
+export async function disconnectMicrosoft(): Promise<{ success: boolean }> {
+  try {
+    if (msalInstance) {
+      const accounts = await msalInstance.getTokenCache().getAllAccounts();
+      for (const account of accounts) {
+        await msalInstance.getTokenCache().removeAccount(account);
+      }
+    }
+  } catch (e) {
+    console.warn("[Microsoft] Failed to remove MSAL accounts:", e);
+  }
+
+  // Reset in-memory state
+  accessToken = null;
+  graphClient = null;
+  authenticatedUserEmail = null;
+  msalInstance = null;
+
+  logActivity("microsoft_disconnected", "microsoft", {});
+  return { success: true };
 }
 
 /**

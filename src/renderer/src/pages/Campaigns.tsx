@@ -32,6 +32,34 @@ export default function Campaigns() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(
     null,
   );
+  const [prioritizedSection, setPrioritizedSection] = useState<string>("none");
+
+  // Load Settings for prioritized section
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const settings = await (window as any).api.settings.get();
+        if (settings.pipeline?.prioritizedSection) {
+          setPrioritizedSection(settings.pipeline.prioritizedSection);
+        }
+      } catch (e) {
+        console.error("Failed to load settings", e);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const handlePrioritize = async (sectionId: string) => {
+    const newPriority = prioritizedSection === sectionId ? "none" : sectionId;
+    setPrioritizedSection(newPriority);
+    try {
+      await (window as any).api.settings.update({
+        pipeline: { prioritizedSection: newPriority }
+      });
+    } catch (e) {
+      console.error("Failed to update priority setting", e);
+    }
+  };
 
   // Detail View State
   const [activeTab, setActiveTab] = useState<
@@ -929,13 +957,35 @@ export default function Campaigns() {
                     border: "1px solid var(--border-subtle)"
                   }}
                 >
-                  <div className="flex justify-between items-center mb-4 px-1">
+                  <div className="flex justify-between items-center mb-4 px-1 gap-2">
                     <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
                       {col.name}
                     </h3>
-                    <span className="bg-white/50 px-2 text-[10px] font-bold rounded-full py-0.5 text-muted border border-border-subtle">
-                      {colLeads.length}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {col.id !== "meeting" && (
+                        <button
+                          onClick={() => handlePrioritize(col.id)}
+                          style={{
+                            padding: "2px 8px",
+                            fontSize: "10px",
+                            fontWeight: "bold",
+                            border: "1px solid",
+                            borderRadius: "12px",
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                            backgroundColor: prioritizedSection === col.id ? "var(--accent-primary)" : "transparent",
+                            color: prioritizedSection === col.id ? "#fff" : "var(--text-muted)",
+                            borderColor: prioritizedSection === col.id ? "var(--accent-primary)" : "var(--border-subtle)"
+                          }}
+                          title={prioritizedSection === col.id ? "Disable Priority" : "Prioritize this section"}
+                        >
+                          {prioritizedSection === col.id ? "★ PRIORITIZED" : "☆ Prioritize"}
+                        </button>
+                      )}
+                      <span className="bg-white/50 px-2 text-[10px] font-bold rounded-full py-0.5 text-muted border border-border-subtle">
+                        {colLeads.length}
+                      </span>
+                    </div>
                   </div>
 
                   <div
@@ -1286,36 +1336,47 @@ export default function Campaigns() {
             </div>
 
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", borderTop: "1px solid var(--border-subtle)", paddingTop: "16px" }}>
-              {selectedLead.status === "queued" && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ color: "var(--accent-danger)", borderColor: "var(--accent-danger)" }}
-                  onClick={async () => {
-                    setIsRemovingLead(true);
-                    try {
-                      const res = await (window as any).api.leads.delete(selectedLead.id);
-                      if (res.success) {
-                        setCampaigns(prev => prev.map(c => {
-                          if (c.id === selectedCampaignId) {
-                            return { ...c, leads: c.leads.filter(l => l.id !== selectedLead.id) };
-                          }
-                          return c;
-                        }));
-                        setSelectedLead(null);
-                      } else {
-                        alert("Failed to remove lead.");
-                      }
-                    } catch (e) {
-                      console.error("Failed to remove lead", e);
-                      alert("Error removing lead.");
+              <button
+                className="btn btn-secondary"
+                style={{ color: "var(--accent-danger)", borderColor: "rgba(220,38,38,0.4)", background: "rgba(220,38,38,0.06)" }}
+                onClick={async () => {
+                  // Escalating warning message based on pipeline stage
+                  const advancedStatuses = ["connection_accepted", "email_sent", "welcome_sent", "follow_up_sent", "replied", "in_conversation", "meeting_booked", "converted"];
+                  const midStatuses = ["connection_requested", "connection_sent"];
+                  let confirmMsg = `Remove "${selectedLead.name}" from the pipeline?`;
+
+                  if (advancedStatuses.includes(selectedLead.status)) {
+                    confirmMsg = `⚠️ WARNING: "${selectedLead.name}" is currently in an active stage (${selectedLead.status.replace(/_/g, " ")}).\n\nRemoving this lead will permanently delete all their data, conversation history, and cancel any pending automation jobs.\n\nThis CANNOT be undone. Continue?`;
+                  } else if (midStatuses.includes(selectedLead.status)) {
+                    confirmMsg = `Remove "${selectedLead.name}" from the pipeline?\n\nThis will cancel the pending connection request job and delete all associated data.`;
+                  }
+
+                  if (!window.confirm(confirmMsg)) return;
+
+                  setIsRemovingLead(true);
+                  try {
+                    const res = await (window as any).api.leads.delete(selectedLead.id);
+                    if (res.success) {
+                      setCampaigns(prev => prev.map(c => {
+                        if (c.id === selectedCampaignId) {
+                          return { ...c, leads: c.leads.filter(l => l.id !== selectedLead.id) };
+                        }
+                        return c;
+                      }));
+                      setSelectedLead(null);
+                    } else {
+                      alert("Failed to remove lead: " + (res.error || "Unknown error"));
                     }
-                    setIsRemovingLead(false);
-                  }}
-                  disabled={isRemovingLead}
-                >
-                  {isRemovingLead ? "⏳ Removing..." : "🗑️ Remove from Queue"}
-                </button>
-              )}
+                  } catch (e) {
+                    console.error("Failed to remove lead", e);
+                    alert("Error removing lead.");
+                  }
+                  setIsRemovingLead(false);
+                }}
+                disabled={isRemovingLead}
+              >
+                {isRemovingLead ? "⏳ Removing..." : "🗑️ Remove from Pipeline"}
+              </button>
               <button className="btn btn-primary" onClick={() => setSelectedLead(null)} disabled={isRemovingLead}>
                 Close
               </button>

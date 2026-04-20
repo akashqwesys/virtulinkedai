@@ -14,6 +14,7 @@
 
 import { getDatabase, logActivity } from "../storage/database";
 import { v4 as uuid } from "uuid";
+import { isBrowserLocked, setBrowserLocked } from "../browser/engine";
 
 // ============================================================
 // Types
@@ -178,24 +179,23 @@ export class JobQueue {
 
     this.pollInterval = setInterval(() => {
       this.poll().catch((err) => {
-        // console.error("[JobQueue] Poll error:", err);
+        console.error("[JobQueue] Poll error:", err);
       });
     }, this.POLL_INTERVAL_MS);
 
     // Poll immediately on start
     this.poll().catch((err) =>
-      // console.error("[JobQueue] Initial poll error:", err),
-      undefined
+      console.error("[JobQueue] Initial poll error:", err),
     );
 
     logActivity("job_queue_started", "queue", {
       pollIntervalMs: this.POLL_INTERVAL_MS,
     });
-    // console.log(
-    //   "[JobQueue] Started. Polling every",
-    //   this.POLL_INTERVAL_MS / 1000,
-    //   "seconds.",
-    // );
+    console.log(
+      "[JobQueue] Started. Polling every",
+      this.POLL_INTERVAL_MS / 1000,
+      "seconds.",
+    );
   }
 
   /**
@@ -208,7 +208,7 @@ export class JobQueue {
     }
     this.running = false;
     logActivity("job_queue_stopped", "queue");
-    // console.log("[JobQueue] Stopped.");
+    console.log("[JobQueue] Stopped.");
   }
 
   private isProcessing = false;
@@ -217,7 +217,7 @@ export class JobQueue {
    * Process the next available batch of jobs
    */
   private async poll(): Promise<void> {
-    if (!this.running || this.isProcessing) return;
+    if (!this.running || this.isProcessing || isBrowserLocked()) return;
     this.isProcessing = true;
 
     try {
@@ -262,9 +262,12 @@ export class JobQueue {
 
         // Execute serially! A single browser page cannot run concurrent humanizer actions.
         try {
+          // Lock browser so manual user flows (Import) wait for background jobs to finish
+          setBrowserLocked(true);
           await this.executeJob(row, handler);
         } finally {
           this.processingJobIds.delete(row.id);
+          setBrowserLocked(false);
         }
       }
     } finally {
@@ -284,7 +287,7 @@ export class JobQueue {
       payload: JSON.parse(row.payload || "{}"),
       status: "running",
       priority: row.priority,
-      attempts: row.attempts,
+      attempts: row.attempts + 1, // DB was just incremented, reflect that locally!
       maxAttempts: row.max_attempts,
       runAt: new Date(row.run_at),
       startedAt: new Date(),
@@ -294,8 +297,9 @@ export class JobQueue {
     };
 
     // console.log(
-    //   `[JobQueue] Executing job ${job.type} (${job.id}), attempt ${job.attempts}/${job.maxAttempts}`,
-    // );
+    console.log(
+      `[JobQueue] Executing job ${job.type} (${job.id}), attempt ${job.attempts}/${job.maxAttempts}`,
+    );
 
     try {
       await handler(job);
@@ -316,11 +320,12 @@ export class JobQueue {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // console.error(`[JobQueue] Job ${job.type} (${job.id}) failed:`, message);
+      console.error(`[JobQueue] Job ${job.type} (${job.id}) failed:`, message);
 
       const isWorkingHoursError = message.includes("Outside working hours");
       const isAutoPilotError = message.includes("AutoPilot is running");
-      const isPausedError = isWorkingHoursError || isAutoPilotError;
+      const isCampaignPausedError = message.includes("Campaign is paused");
+      const isPausedError = isWorkingHoursError || isAutoPilotError || isCampaignPausedError;
 
       if (!isPausedError && job.attempts >= job.maxAttempts) {
         // Exhausted retries — mark as permanently failed
@@ -382,24 +387,58 @@ export class JobQueue {
   private recoverCrashedJobs(): void {
     try {
       const db = getDatabase();
-      const stuckJobs = db
-        .prepare(
-          `UPDATE job_queue SET status = 'pending', run_at = datetime('now')
-         WHERE status = 'running'`,
-        )
-        .run();
 
-      if (stuckJobs.changes > 0) {
-        // console.log(
-        //   `[JobQueue] Recovered ${stuckJobs.changes} crashed job(s) from previous session.`,
-        // );
-        logActivity("job_queue_crash_recovery", "queue", {
-          recoveredCount: stuckJobs.changes,
-        });
+      // Find all jobs stuck in 'running' state from a previous crash
+      const stuckJobs = db
+        .prepare(`SELECT id, type, payload FROM job_queue WHERE status = 'running'`)
+        .all() as any[];
+
+      if (stuckJobs.length === 0) return;
+
+      let recovered = 0;
+      let cancelled = 0;
+
+      for (const row of stuckJobs) {
+        let campaignId: string | null = null;
+        try {
+          const payload = JSON.parse(row.payload || "{}");
+          campaignId = payload.campaignId || payload.leadId ? null : null;
+          if (payload.campaignId) campaignId = payload.campaignId;
+          // For lead-scoped jobs, look up the lead's campaign
+          if (!campaignId && payload.leadId) {
+            const lead = db.prepare("SELECT campaign_id FROM leads WHERE id = ?").get(payload.leadId) as any;
+            if (lead) campaignId = lead.campaign_id;
+          }
+        } catch { /* ignore parse errors */ }
+
+        // If the job belongs to a paused/non-active campaign, cancel it
+        if (campaignId) {
+          const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(campaignId) as any;
+          if (campaign && campaign.status !== "active") {
+            db.prepare(
+              `UPDATE job_queue SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`
+            ).run(row.id);
+            cancelled++;
+            continue;
+          }
+        }
+
+        // Safe to recover — campaign is still active (or job is system-level)
+        db.prepare(
+          `UPDATE job_queue SET status = 'pending', run_at = datetime('now') WHERE id = ?`
+        ).run(row.id);
+        recovered++;
+      }
+
+      if (recovered > 0 || cancelled > 0) {
+        console.log(
+          `[JobQueue] Crash recovery: recovered ${recovered} job(s), cancelled ${cancelled} job(s) (paused campaigns).`,
+        );
+        logActivity("job_queue_crash_recovery", "queue", { recovered, cancelled });
       }
     } catch (err) {
       // DB might not be initialized yet if called too early
-      // console.warn("[JobQueue] Could not run crash recovery yet:", err);
+      console.warn("[JobQueue] Could not run crash recovery yet:", err);
     }
   }
 

@@ -41,7 +41,7 @@
  */
 
 import type { Page } from "puppeteer-core";
-import { humanDelay, humanMouseMove, smoothScrollToEntity } from "../browser/humanizer";
+import { humanDelay, humanMouseMove, smoothScrollToEntity, humanScroll } from "../browser/humanizer";
 import { getDatabase } from "../storage/database";
 import { performSearch } from "../browser/session";
 import { BrowserWindow } from "electron";

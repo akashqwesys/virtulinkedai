@@ -5,6 +5,7 @@ import { scrapeProfile } from "./scraper";
 import { sendConnectionRequest } from "./connector";
 import { generateConnectionNote } from "../ai/personalizer";
 import { ProfileDiscoveryEngine } from "./profileDiscovery";
+import { setBrowserLocked, waitForBrowserLock } from "../browser/engine";
 
 let autoPilotRunning = false;
 
@@ -33,7 +34,9 @@ export async function runPhysicalAutoPilot(
   settings: any,
   limitManager: any
 ) {
+  await waitForBrowserLock();
   autoPilotRunning = true;
+  setBrowserLocked(true);
   const page = getPage();
   if (!page) {
     sendLog("❌ Browser not launched. Aborting.");
@@ -227,6 +230,7 @@ export async function runPhysicalAutoPilot(
     console.error("[AutoPilot] Stack:", error.stack);
   } finally {
     autoPilotRunning = false;
+    setBrowserLocked(false);
     sendLog(`🔒 Auto-Pilot shut down.`);
   }
 }

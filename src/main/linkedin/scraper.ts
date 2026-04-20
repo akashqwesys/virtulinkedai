@@ -21,7 +21,7 @@ import type {
   Education,
   Post,
 } from "../../shared/types";
-import { getPage } from "../browser/engine";
+import { getPage, setBrowserLocked, waitForBrowserLock } from "../browser/engine";
 import {
   humanClick,
   humanDelay,
@@ -38,6 +38,36 @@ import { generateConnectionNote, parseProfileJson } from "../ai/personalizer";
 import { performSearch } from "../browser/session";
 import { sendConnectionRequest } from "./connector";
 import type { AppSettings } from "../../shared/types";
+import { getDatabase } from "../storage/database";
+
+// ============================================================
+// Campaign Abort Signal
+// Allows pauseCampaign() to immediately stop in-flight imports.
+// ============================================================
+const _abortedCampaigns = new Set<string>();
+
+/**
+ * Call this when a campaign is paused to signal any running
+ * importFromSearchUrl() loops to stop immediately.
+ */
+export function abortCampaignImport(campaignId: string): void {
+  _abortedCampaigns.add(campaignId);
+  // Auto-clear after 5 minutes so restarts aren't blocked forever
+  setTimeout(() => _abortedCampaigns.delete(campaignId), 5 * 60 * 1000);
+}
+
+/** Check if an import for this campaign has been aborted. */
+function isImportAborted(campaignId?: string): boolean {
+  if (!campaignId) return false;
+  if (_abortedCampaigns.has(campaignId)) return true;
+  // Also check live DB status as a secondary guard
+  try {
+    const db = getDatabase();
+    const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(campaignId) as any;
+    if (campaign && campaign.status !== "active") return true;
+  } catch { /* ignore */ }
+  return false;
+}
 
 // ============================================================
 // Gaussian delay helper (500–1500ms between section extractions)
@@ -670,6 +700,10 @@ async function extractNormalProfile(
 
     console.log(`[Scraper] Recent posts: ${recentPosts.length}`);
 
+    // ── Section 7: Contact Info ───────────────────────────────
+    await gaussianSectionDelay();
+    const contactInfo = await extractContactInfo(page);
+
     // ── Assemble profile object ───────────────────────────────
     const company = experience[0]?.company || "";
     const role = experience[0]?.title || identity.headline.split(" at ")[0] || "";
@@ -684,6 +718,7 @@ async function extractNormalProfile(
       role,
       location: identity.location,
       about,
+      email: contactInfo?.email || undefined,
       experience,
       education,
       skills,
@@ -1091,6 +1126,11 @@ export async function scrapeProfile(
           ...profileData.rawData,
           contactInfo,
         };
+        // Persist extracted email to the profile object so upsertLeadProfile saves it
+        if (contactInfo.email) {
+          (profileData as any).email = contactInfo.email;
+          console.log(`[Scraper] Contact email found: ${contactInfo.email}`);
+        }
       }
     }
 
@@ -1119,6 +1159,7 @@ export async function scrapeProfile(
     // ── Persist to Database via UPSERT ──
     console.log(`[Scraper] Attempting DB save for "${profileData.firstName} ${profileData.lastName}" (url: ${profileData.linkedinUrl})...`);
     const savedId = upsertLeadProfile(profileData);
+    profileData.id = savedId;
     console.log(`[Scraper] Profile saved/updated in DB. ID: ${savedId}`);
 
     if (options.campaignId) {
@@ -1307,6 +1348,9 @@ export async function importFromSearchUrl(
   const page = getPage();
   if (!page) throw new Error("Browser not launched");
 
+  await waitForBrowserLock();
+  setBrowserLocked(true);
+
   const results: Array<{
     name: string;
     title: string;
@@ -1348,6 +1392,14 @@ export async function importFromSearchUrl(
     let pageNum = 1;
 
     while (results.length < maxLeads && pageNum <= 10) {
+      // ── Campaign Abort Check ─────────────────────────────────────────
+      // This fires at the top of every page iteration. If the campaign was
+      // paused while we were processing the previous page, stop immediately.
+      if (isImportAborted(outreachOptions?.campaignId)) {
+        console.log(`[Import] ⛔ Campaign ${outreachOptions?.campaignId} is paused. Aborting import loop.`);
+        break;
+      }
+
       // ── Phase 1: Emulate human reading by scrolling up/down ────────────
       console.log(`[Import] Phase 1 - Emulating human name-reading (reading profile names up/down) on page ${pageNum}...`);
       
@@ -1491,6 +1543,11 @@ export async function importFromSearchUrl(
         console.log(`[Import] Phase 3 - Will interact with up to ${profilesPerPage} profiles on this page...`);
 
         for (let pIdx = 0; pIdx < profilesPerPage && results.length < maxLeads; pIdx++) {
+          // Per-profile campaign abort check — catches pause mid-page
+          if (isImportAborted(outreachOptions?.campaignId)) {
+            console.log(`[Import] ⛔ Campaign paused mid-page. Stopping profile interactions.`);
+            break;
+          }
           // Build fresh candidate list excluding already-clicked profiles this page
           const remaining = pageResults.filter(
             r => r.profileUrl.includes("/in/") && !pageVisited.has(r.profileUrl)
@@ -1557,6 +1614,8 @@ export async function importFromSearchUrl(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     logActivity("search_import_failed", "linkedin", { error: message }, "error", message);
+  } finally {
+    setBrowserLocked(false);
   }
 
   return results;
@@ -1735,6 +1794,29 @@ async function _profileInteractionPhase(
     if (profile) {
       console.log(`[Import] 📋 Scraped: ${profile.firstName} ${profile.lastName} @ ${profile.company}`);
 
+      // ── Inline Enrichment ───────────────────────────────────────────────
+      console.log(`[Import-Debug] Native Scrape Email: ${profile.email || 'none'}, Settings Object Exists: !!${!!settings}, Enrichment Config: ${JSON.stringify(settings?.enrichment)}`);
+      
+      if (!profile.email && settings?.enrichment && settings.enrichment.provider !== 'none') {
+        console.log(`[Import] Attempting inline enrichment for ${profile.firstName} ${profile.lastName}...`);
+        const { enrichLeadEmail } = await import("../ai/emailEnricher");
+        const enriched = await enrichLeadEmail(
+          profile.firstName, 
+          profile.lastName, 
+          profile.company || "", 
+          settings.enrichment
+        );
+        if (enriched) {
+          profile.email = enriched;
+          console.log(`[Import] Enriched email inline during import: ${enriched}`);
+          if (profile.id) {
+            const { getDatabase } = await import("../storage/database");
+            const db = getDatabase();
+            db.prepare(`UPDATE leads SET email = ? WHERE id = ?`).run(enriched, profile.id);
+          }
+        }
+      }
+
       // ── Notify caller immediately (profile-by-profile queue insert) ──────
       if (outreachOptions.onProfileScraped) {
         outreachOptions.onProfileScraped({
@@ -1777,6 +1859,38 @@ async function _profileInteractionPhase(
             `[Import] ✅ Connected: ${profile.firstName} ${profile.lastName}` +
             ` (note: ${result.noteSent ? "yes" : "no"})`,
           );
+          
+          if (profile.id) {
+            const { getDatabase } = await import("../storage/database");
+            const db = getDatabase();
+            
+            // Explicitly update database inline to ensure jobs & checkers act correctly
+            db.prepare(`
+              UPDATE leads 
+              SET status = 'connection_requested',
+                  connection_requested_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                  connection_note = ?
+              WHERE id = ?
+            `).run(note || null, profile.id);
+            
+            // Delete any duplicate SEND_CONNECTION jobs that pipeline runner might have queued in the interim!
+            try {
+              db.prepare(`DELETE FROM job_queue WHERE type = 'SEND_CONNECTION' AND payload LIKE ?`).run(`%${profile.id}%`);
+            } catch (err) { /* ignore */ }
+
+            // Trigger connection email immediately if email is available
+            if (profile.email) {
+              console.log(`[Import] Email found (${profile.email}), enqueuing connection email immediately.`);
+              const { jobQueue } = await import("../queue/jobQueue");
+              const { JOB_TYPES } = await import("../queue/jobs");
+              jobQueue.enqueue(
+                JOB_TYPES.SEND_INTRO_EMAIL,
+                { leadId: profile.id, campaignId: outreachOptions.campaignId, recipientEmail: profile.email },
+                { delayMs: 1000, priority: 4 }
+              );
+            }
+          }
         } else if (result.error === "COMPLETED_SKIPPED") {
           console.log(`[Import] ⏭️ Already connected/pending: ${profile.firstName}.`);
         } else if (result.error === "Daily connection request limit reached") {

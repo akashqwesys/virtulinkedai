@@ -42,6 +42,37 @@ export default function App() {
     return (localStorage.getItem("app-theme") as "light" | "dark") || "light";
   });
 
+  // Global Status States
+  const [browserStatus, setBrowserStatus] = useState<"idle" | "running" | "error">("idle");
+  const [linkedinStatus, setLinkedinStatus] = useState(false);
+  const [aiStatus, setAiStatus] = useState(false);
+  const [emailStatus, setEmailStatus] = useState(false);
+
+  // Global Status Polling
+  useEffect(() => {
+    async function fetchStatuses() {
+      try {
+        const [browser, linkedin, ai, email] = await Promise.all([
+          window.api.browser.getStatus().catch(() => ({ status: "error" })),
+          window.api.linkedin.getLoginStatus().catch(() => ({ isLoggedIn: false })),
+          window.api.ai.getStatus().catch(() => ({ online: false })),
+          window.api.email.getStatus().catch(() => ({ connected: false })),
+        ]);
+        
+        setBrowserStatus(browser.status as any);
+        setLinkedinStatus(linkedin.isLoggedIn);
+        setAiStatus(ai.online);
+        setEmailStatus(email.connected);
+      } catch {
+        // Ignore errors during silent polling
+      }
+    }
+
+    fetchStatuses();
+    const interval = setInterval(fetchStatuses, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   // Apply theme to body
   useEffect(() => {
     document.body.classList.remove("light-theme", "dark-theme");
@@ -149,19 +180,26 @@ export default function App() {
             className="flex items-center gap-2"
             style={{ marginBottom: "8px" }}
           >
-            <span className="status-dot offline" id="browser-status-dot" />
-            <span className="text-sm text-muted">Browser: Idle</span>
+            <span className={`status-dot ${browserStatus === "running" ? "online" : browserStatus === "error" ? "error" : "offline"}`} />
+            <span className="text-sm text-muted">Browser: {browserStatus === "running" ? "Running" : browserStatus === "error" ? "Error" : "Idle"}</span>
           </div>
           <div
             className="flex items-center gap-2"
             style={{ marginBottom: "8px" }}
           >
-            <span className="status-dot offline" id="linkedin-status-dot" />
-            <span className="text-sm text-muted">LinkedIn: Not connected</span>
+            <span className={`status-dot ${linkedinStatus ? "online" : "offline"}`} />
+            <span className="text-sm text-muted">LinkedIn: {linkedinStatus ? "Connected" : "Not connected"}</span>
+          </div>
+          <div
+            className="flex items-center gap-2"
+            style={{ marginBottom: "8px" }}
+          >
+            <span className={`status-dot ${aiStatus ? "online" : "offline"}`} />
+            <span className="text-sm text-muted">AI Engine: {aiStatus ? "Online" : "Offline"}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="status-dot offline" id="ai-status-dot" />
-            <span className="text-sm text-muted">AI: Checking...</span>
+            <span className={`status-dot ${emailStatus ? "online" : "offline"}`} />
+            <span className="text-sm text-muted">O365 Email: {emailStatus ? "Connected" : "Not connected"}</span>
           </div>
         </div>
       </aside>

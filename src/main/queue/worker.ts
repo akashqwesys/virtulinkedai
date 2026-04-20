@@ -18,29 +18,36 @@ import type {
   SendIntroEmailPayload,
   SendWelcomeEmailPayload,
   SendFollowupEmailPayload,
+  SendMeetingConfirmationPayload,
+  EnrichLeadEmailPayload,
   PublishScheduledPostPayload,
   RunEngagementSessionPayload,
   CheckMessagesPayload,
   PruneJobQueuePayload,
   SendReplyDmPayload,
+  CheckEngagedRepliesPayload,
+  CheckLeadThreadPayload,
 } from "./jobs";
 import type { Job } from "./jobQueue";
 import { getDatabase, logActivity } from "../storage/database";
 import { isWithinWorkingHours, DailyLimitManager } from "../browser/humanizer";
 import { scrapeProfile } from "../linkedin/scraper";
 import { sendConnectionRequest } from "../linkedin/connector";
-import { sendMessage, sendWelcomeDM } from "../linkedin/messenger";
+import { sendMessage, sendWelcomeDM, sendReplyInThread } from "../linkedin/messenger";
 import { generatePersonalizedEmail } from "../ai/personalizer";
 import { sendPersonalizedLeadEmail } from "../microsoft/email";
+import { enrichLeadEmail } from "../ai/emailEnricher";
 import { createTextPost } from "../content/scheduler";
 import { runEngagementSession } from "../engagement/feed";
 import { checkAllPendingConnections } from "../linkedin/connectionChecker";
 import {
   readUnreadMessages,
   processChatbotMessage,
+  checkLeadThreadForReply,
 } from "../linkedin/messenger";
 import { launchBrowser, getBrowserStatus, getPage } from "../browser/engine";
 import { isAutoPilotRunning } from "../linkedin/autopilot";
+import { checkAllEngagedLeads } from "../linkedin/connectionChecker";
 
 // Settings and limit manager — injected once at app start
 let _settings: any = null;
@@ -64,7 +71,7 @@ function getWarmupMultiplier(settings: any): number {
   const pct = startPct + ((100 - startPct) * day) / rampDays;
   const multiplier = Math.min(1.0, pct / 100);
 
-  // console.log(`[Worker] Warmup day ${day}/${rampDays}: limits at ${Math.round(pct)}% (×${multiplier.toFixed(2)})`);
+  console.log(`[Worker] Warmup day ${day}/${rampDays}: limits at ${Math.round(pct)}% (×${multiplier.toFixed(2)})`);
   return multiplier;
 }
 
@@ -143,14 +150,40 @@ async function ensureBrowserRunning(): Promise<void> {
 
   const status = getBrowserStatus();
   if (status.status !== "running" || !getPage()) {
-    // console.log("[Worker] Browser not running — attempting auto-launch...");
+    console.log("[Worker] Browser not running — attempting auto-launch...");
     const result = await launchBrowser();
     if (!result.success) {
       throw new Error(`Browser auto-launch failed: ${result.error || "Unknown error"}. Please launch the browser manually from the Dashboard.`);
     }
     // Wait a moment for the browser to stabilize
     await new Promise((r) => setTimeout(r, 2000));
-    // console.log("[Worker] Browser auto-launched successfully.");
+    console.log("[Worker] Browser auto-launched successfully.");
+  }
+}
+
+// ============================================================
+// Campaign Guard — Ensure campaign is active before running jobs
+// ============================================================
+function enforceCampaignActive(campaignId: string | null | undefined): void {
+  if (!campaignId) return;
+  const db = getDatabase();
+  const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(campaignId) as any;
+  if (campaign && campaign.status !== "active") {
+    throw new Error("Job paused: Campaign is paused or not active.");
+  }
+}
+
+/**
+ * For system-level recurring jobs (CHECK_ACCEPTANCE, CHECK_MESSAGES, etc.)
+ * that don't belong to a single campaign — throw if NO campaign is active at all.
+ * The queue treats "Campaign is paused" errors as soft retries (reschedules),
+ * so the job will automatically resume once the user unpauses.
+ */
+function enforceAnyActiveCampaign(): void {
+  const db = getDatabase();
+  const active = db.prepare("SELECT id FROM campaigns WHERE status = 'active' LIMIT 1").get();
+  if (!active) {
+    throw new Error("Job paused: Campaign is paused — no active campaigns.");
   }
 }
 
@@ -163,50 +196,82 @@ jobQueue.process<ScrapeProfilePayload>(
   async (job: Job<ScrapeProfilePayload>) => {
     enforceWorkingHours();
     await ensureBrowserRunning();
-    if (!_limitManager?.canPerform("profileViews"))
-      throw new Error("Daily profile view limit reached");
 
     const { leadId, linkedinUrl, campaignId } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    if (!_limitManager?.canPerform("profileViews"))
+      throw new Error("Daily profile view limit reached");
     
     // Guard: skip if lead was deleted while job was queued/running
     const db = getDatabase();
-    const leadExists = db.prepare("SELECT id FROM leads WHERE id = ?").get(leadId);
-    if (!leadExists) {
-      // console.log(`[Worker] Skipping SCRAPE_PROFILE — lead ${leadId} was deleted.`);
+    const leadEntity = db.prepare("SELECT id, status FROM leads WHERE id = ?").get(leadId) as any;
+    if (!leadEntity) {
+      console.log(`[Worker] Skipping SCRAPE_PROFILE — lead ${leadId} was deleted.`);
       return; // Clean exit, job will be marked as done
     }
-    
+
+    if (
+      leadEntity.status === "profile_scraped" ||
+      leadEntity.status === "connection_requested" ||
+      leadEntity.status === "connected" ||
+      leadEntity.status === "messaged" ||
+      leadEntity.status === "engaged" ||
+      leadEntity.status === "handed_off" ||
+      leadEntity.status === "meeting_booked"
+    ) {
+      console.log(`[Worker] Skipping SCRAPE_PROFILE — lead ${leadId} already scraped or processed (status: ${leadEntity.status}).`);
+      return; 
+    }
+
     const profile = await scrapeProfile(linkedinUrl, { readNaturally: true }, _settings?.ai);
 
     if (!profile) throw new Error(`Failed to scrape profile: ${linkedinUrl}`);
 
     _limitManager.record("profileViews");
 
+    // Attempt enrichment if email is missing (for immediate fallback workflow)
+    if (!profile.email && _settings?.enrichment) {
+      console.log(`[Worker] Attempting inline enrichment for ${profile.firstName} ${profile.lastName}...`);
+      const enriched = await enrichLeadEmail(
+        profile.firstName, 
+        profile.lastName, 
+        profile.company || "", 
+        _settings.enrichment
+      );
+      if (enriched) {
+        profile.email = enriched;
+        console.log(`[Worker] Enriched email inline during scraping: ${enriched}`);
+      }
+    }
+
     // Persist to DB
     db.prepare(
       `
     UPDATE leads SET
-      first_name = ?, last_name = ?, headline = ?, company = ?, role = ?,
-      location = ?, about = ?, skills_json = ?, experience_json = ?,
-      recent_posts_json = ?, profile_image_url = ?, scraped_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-      status = 'profile_scraped', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), raw_data_json = ?
-    WHERE id = ?
+      first_name = @firstName, last_name = @lastName, headline = @headline, company = @company, role = @role,
+      location = @location, about = @about, email = @email, skills_json = @skills, experience_json = @experience,
+      recent_posts_json = @recentPosts, profile_image_url = @profileImageUrl, scraped_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+      status = 'profile_scraped', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), raw_data_json = @rawData
+    WHERE id = @id
   `,
-    ).run(
-      profile.firstName,
-      profile.lastName,
-      profile.headline,
-      profile.company,
-      profile.headline,
-      profile.location,
-      profile.about,
-      JSON.stringify(profile.skills),
-      JSON.stringify(profile.experience),
-      JSON.stringify(profile.recentPosts || []),
-      profile.profileImageUrl,
-      JSON.stringify(profile),
-      leadId,
-    );
+    ).run({
+      // Coerce every field to null if undefined — SQLite3 rejects undefined bindings.
+      firstName:      profile.firstName       ?? null,
+      lastName:       profile.lastName        ?? null,
+      headline:       profile.headline        ?? null,
+      company:        profile.company         ?? null,
+      role:           profile.headline        ?? null, // default role to headline
+      location:       profile.location        ?? null,
+      about:          profile.about           ?? null,
+      email:          profile.email           ?? null,
+      skills:         JSON.stringify(profile.skills       ?? []),
+      experience:     JSON.stringify(profile.experience   ?? []),
+      recentPosts:    JSON.stringify(profile.recentPosts  ?? []),
+      profileImageUrl: profile.profileImageUrl ?? null,
+      rawData:        JSON.stringify(profile),
+      id:             leadId,
+    });
 
     logActivity("profile_scraped_via_queue", "queue", {
       leadId,
@@ -235,21 +300,35 @@ jobQueue.process<SendConnectionPayload>(
   async (job: Job<SendConnectionPayload>) => {
     enforceWorkingHours();
     await ensureBrowserRunning();
-    if (!_limitManager?.canPerform("connectionRequests"))
-      throw new Error("Daily connection request limit reached");
 
     const { leadId, linkedinUrl, campaignId } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    if (!_limitManager?.canPerform("connectionRequests"))
+      throw new Error("Daily connection request limit reached");
     const db = getDatabase();
     const lead = db
       .prepare("SELECT * FROM leads WHERE id = ?")
       .get(leadId) as any;
     if (!lead) {
-      // console.log(`[Worker] Skipping SEND_CONNECTION — lead ${leadId} was deleted.`);
-      return; // Clean exit
+      console.log(`[Worker] Skipping SEND_CONNECTION — lead ${leadId} was deleted.`);
+      return; 
     }
 
-    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : null;
-    if (!profile) throw new Error("Profile data not available");
+    if (lead.status !== "profile_scraped" && lead.status !== "new") {
+      console.log(`[Worker] Skipping SEND_CONNECTION — lead ${leadId} already processed by another routine (status: ${lead.status}).`);
+      return;
+    }
+
+    // Unpack profile data using DB columns as fallbacks, as rawData may be sparse
+    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : {};
+    profile.id = lead.id;
+    profile.linkedinUrl = lead.linkedin_url;
+    profile.firstName = lead.first_name || profile.firstName || "Unknown";
+    profile.lastName = lead.last_name || profile.lastName || "";
+    profile.company = lead.company || profile.company || "";
+    profile.headline = lead.headline || profile.headline || "";
+    profile.location = lead.location || profile.location || "";
 
     const context = {
       yourName: _settings?.personalization?.yourName || "User",
@@ -264,16 +343,26 @@ jobQueue.process<SendConnectionPayload>(
       _limitManager!,
     );
     if (!result.success) {
-      if (result.error === "COMPLETED_SKIPPED") {
-        // console.log(`[Worker] Job ${job.id} marked as COMPLETED_SKIPPED based on relationship state.`);
-        // Returning successfully allows JobQueue to mark it 'completed' natively without throwing.
-        // If we strictly want 'COMPLETED_SKIPPED' in DB, we can manually update it here:
+      if (
+        result.error === "COMPLETED_SKIPPED" || 
+        result.error === "MODAL_NOT_FOUND" ||
+        (result.error && (result.error.includes("Connect button not found") || result.error.includes("NOT_FOUND")))
+      ) {
+        console.log(`[Worker] Job ${job.id} marked as COMPLETED_SKIPPED based on relationship state or missing UI element: ${result.error}`);
         db.prepare(`UPDATE job_queue SET status = 'COMPLETED_SKIPPED' WHERE id = ?`).run(job.id);
+        
+        // Progress lead to connection_requested so pipeline doesn't loop
+        db.prepare(
+          `UPDATE leads SET status = 'connection_requested',
+          connection_requested_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+          WHERE id = ?`
+        ).run(leadId);
+        
         return;
       }
       
       if (result.error === "EMAIL_NEEDED") {
-        // console.log(`[Worker] Connect unavailable, but Message available. Triggering Module C Email via MS Graph API.`);
+        console.log("[Worker] Connect unavailable, but Message available. Triggering Module C Email via MS Graph API.");
         // Placeholder for MS Graph integration
         if (lead.email) {
           jobQueue.enqueue<SendIntroEmailPayload>(
@@ -282,10 +371,64 @@ jobQueue.process<SendConnectionPayload>(
             { delayMs: 1000, priority: 5 }
           );
         }
+        
+        // Progress lead to connection_requested to unblock pipeline
+        db.prepare(
+          `UPDATE leads SET status = 'connection_requested',
+          connection_requested_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+          WHERE id = ?`
+        ).run(leadId);
+        
         return; // Gracefully complete the job
       }
 
       throw new Error(result.error || "Connection request failed");
+
+    } else if (result.error === "LINKEDIN_LIMIT_REACHED") {
+      // ── LinkedIn monthly invitation limit hit ────────────────────────────
+      // The "Add a note" button opened a warning popup instead of a textarea.
+      // We have dismissed the popup. Now pivot to email outreach for this lead.
+      console.log(`[Worker] LinkedIn monthly invitation limit reached. Pivoting to email for lead ${leadId}.`);
+      logActivity("linkedin_invite_limit_reached_worker", "queue", { leadId, linkedinUrl });
+
+      // Attempt to resolve recipient email
+      let recipientEmail: string = lead.email || "";
+
+      if (!recipientEmail && _settings?.enrichment) {
+        console.log(`[Worker] No email stored for lead ${leadId} — attempting enrichment via Hunter/Apollo...`);
+        const enriched = await enrichLeadEmail(
+          lead.first_name || profile.firstName,
+          lead.last_name || profile.lastName,
+          lead.company || profile.company,
+          _settings.enrichment,
+        );
+        if (enriched) {
+          recipientEmail = enriched;
+          // Persist to DB so future jobs don't need to re-enrich
+          db.prepare("UPDATE leads SET email = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?")
+            .run(enriched, leadId);
+          console.log(`[Worker] Email enriched for lead ${leadId}: ${enriched}`);
+        }
+      }
+
+      if (recipientEmail) {
+        jobQueue.enqueue<SendIntroEmailPayload>(
+          JOB_TYPES.SEND_INTRO_EMAIL,
+          { leadId, campaignId, recipientEmail },
+          { delayMs: 3000, priority: 8 },
+        );
+        console.log(`[Worker] SEND_INTRO_EMAIL enqueued for ${profile.firstName} ${profile.lastName} → ${recipientEmail}`);
+      } else {
+        console.log(`[Worker] No email found for lead ${leadId} after enrichment. Cannot send email fallback.`);
+      }
+
+      // Advance lead status so the pipeline doesn't re-attempt the connection
+      db.prepare(
+        `UPDATE leads SET status = 'connection_requested',
+        connection_requested_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE id = ?`
+      ).run(leadId);
+      return; // Complete gracefully
     }
 
     // Note: limitManager.record("connectionRequests") is now called inside
@@ -299,28 +442,19 @@ jobQueue.process<SendConnectionPayload>(
   `,
     ).run(leadId);
 
-    // Trigger intro email if email is available
+    // Trigger connection email immediately if email is available
     const recipientEmail = lead.email;
     if (recipientEmail) {
+      console.log(`[Worker] Email found (${recipientEmail}), enqueuing connection email immediately.`);
       jobQueue.enqueue<SendIntroEmailPayload>(
         JOB_TYPES.SEND_INTRO_EMAIL,
         { leadId, campaignId, recipientEmail },
         {
-          delayMs: 60000, // 1 minute after connection
+          delayMs: 1000, // Trigger immediately after connection
           priority: 4,
         },
       );
     }
-
-    // Schedule follow-up check after 3 days
-    jobQueue.enqueue<CheckAcceptancePayload>(
-      JOB_TYPES.CHECK_ACCEPTANCE,
-      { campaignId },
-      {
-        delayMs: 3 * 24 * 60 * 60 * 1000, // 3 days
-        maxAttempts: 1,
-      },
-    );
 
     logActivity("connection_sent_via_queue", "queue", {
       leadId,
@@ -338,26 +472,37 @@ jobQueue.process<CheckAcceptancePayload>(
   JOB_TYPES.CHECK_ACCEPTANCE,
   async (job: Job<CheckAcceptancePayload>) => {
     if (!_settings) return;
+    enforceAnyActiveCampaign(); // skip all LinkedIn work if no campaign is active
     await ensureBrowserRunning();
+    enforceCampaignActive(job.payload.campaignId);
 
-    const result = await checkAllPendingConnections(_settings);
-    logActivity("acceptance_check_via_queue", "queue", result);
+    const db = getDatabase();
 
-    // Re-enqueue as a recurring job if requested
-    const { recurringIntervalMinutes } = job.payload;
-    if (recurringIntervalMinutes) {
-      jobQueue.enqueue<CheckAcceptancePayload>(
-        JOB_TYPES.CHECK_ACCEPTANCE,
-        {
-          recurringIntervalMinutes,
-        },
-        {
-          delayMs: recurringIntervalMinutes * 60 * 1000,
-          maxAttempts: 1,
-          dedupeKey: "periodic_acceptance_check",
-        },
-      );
+    // Skip if no pending leads remain (avoids pointless browser navigation)
+    const pendingCount = (db.prepare(
+      `SELECT COUNT(*) AS cnt FROM leads WHERE status IN ('connection_requested', 'waiting_acceptance', 'connection_sent')`
+    ).get() as any)?.cnt ?? 0;
+
+    if (pendingCount === 0) {
+      console.log("[Worker] CHECK_ACCEPTANCE — no pending leads, checking for recently connected leads needed Welcome DMs...");
+      logActivity("acceptance_check_skipped_no_pending", "queue", { pendingCount });
+      
+      const { checkRecentConnectionsList } = await import("../linkedin/connectionChecker");
+      let cid = job.payload.campaignId;
+      if (!cid) {
+        const activeCampaign = db.prepare("SELECT id FROM campaigns WHERE status = 'active' LIMIT 1").get() as any;
+        cid = activeCampaign?.id;
+      }
+      if (cid) {
+         await checkRecentConnectionsList(cid, _settings);
+      } else {
+         console.log("[Worker] No active campaign found to assign stray leads to.");
+      }
+    } else {
+      const result = await checkAllPendingConnections(_settings);
+      logActivity("acceptance_check_via_queue", "queue", result);
     }
+
   },
 );
 
@@ -370,20 +515,34 @@ jobQueue.process<SendWelcomeDmPayload>(
   async (job: Job<SendWelcomeDmPayload>) => {
     enforceWorkingHours();
     await ensureBrowserRunning();
-    if (!_limitManager?.canPerform("messages"))
-      throw new Error("Daily message limit reached");
 
     const { leadId, linkedinUrl, campaignId } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    if (!_limitManager?.canPerform("messages"))
+      throw new Error("Daily message limit reached");
     const db = getDatabase();
     const lead = db
       .prepare("SELECT * FROM leads WHERE id = ?")
       .get(leadId) as any;
     if (!lead) {
-      // console.log(`[Worker] Skipping SEND_WELCOME_DM — lead ${leadId} was deleted.`);
+      console.log(`[Worker] Skipping SEND_WELCOME_DM — lead ${leadId} was deleted.`);
       return;
     }
 
-    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { id: leadId, linkedinUrl };
+    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { 
+      id: leadId, 
+      linkedinUrl,
+      firstName: lead.first_name || "",
+      lastName: lead.last_name || "",
+      headline: lead.headline || "",
+      company: lead.company || ""
+    };
+    
+    // Ensure firstName is available for search
+    if (!profile.firstName && lead.first_name) profile.firstName = lead.first_name;
+    if (!profile.lastName && lead.last_name) profile.lastName = lead.last_name;
+
     const context = {
       yourName: _settings?.personalization?.yourName || "User",
       yourCompany: _settings?.personalization?.yourCompany || "",
@@ -410,6 +569,8 @@ jobQueue.process<SendIntroEmailPayload>(
   JOB_TYPES.SEND_INTRO_EMAIL,
   async (job: Job<SendIntroEmailPayload>) => {
     const { leadId, campaignId, recipientEmail } = job.payload;
+    enforceCampaignActive(campaignId);
+
     const db = getDatabase();
     const lead = db
       .prepare("SELECT * FROM leads WHERE id = ?")
@@ -456,6 +617,8 @@ jobQueue.process<SendFollowupEmailPayload>(
   JOB_TYPES.SEND_FOLLOWUP_EMAIL,
   async (job: Job<SendFollowupEmailPayload>) => {
     const { leadId, campaignId, recipientEmail } = job.payload;
+    enforceCampaignActive(campaignId);
+
     const db = getDatabase();
     const lead = db
       .prepare("SELECT * FROM leads WHERE id = ?")
@@ -507,6 +670,156 @@ jobQueue.process<SendFollowupEmailPayload>(
       campaignId,
       recipientEmail,
     });
+  },
+);
+
+// ============================================================
+// Handler: Send Welcome Email (after connection accepted)
+// ============================================================
+
+jobQueue.process<SendWelcomeEmailPayload>(
+  JOB_TYPES.SEND_WELCOME_EMAIL,
+  async (job: Job<SendWelcomeEmailPayload>) => {
+    const { leadId, campaignId, recipientEmail } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    const db = getDatabase();
+    const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadId) as any;
+    if (!lead) throw new Error(`Lead ${leadId} not found`);
+
+    // Skip if already sent or lead has progressed past this
+    const alreadySent = db.prepare(
+      `SELECT id FROM emails WHERE lead_id = ? AND type = 'welcome'`
+    ).get(leadId);
+    if (alreadySent) {
+      console.log(`[Worker] SEND_WELCOME_EMAIL skipped — already sent for lead ${leadId}`);
+      return;
+    }
+
+    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : {};
+    const context = {
+      yourName: _settings?.personalization?.yourName || "User",
+      yourCompany: _settings?.personalization?.yourCompany || "",
+      yourServices: _settings?.personalization?.yourServices || "",
+      emailType: "welcome" as const,
+    };
+
+    const emailContent = await generatePersonalizedEmail(profile, context, _settings?.ai);
+    await sendPersonalizedLeadEmail(profile, emailContent, recipientEmail, "welcome", _settings);
+
+    logActivity("welcome_email_sent_via_queue", "queue", { leadId, campaignId, recipientEmail });
+  },
+);
+
+// ============================================================
+// Handler: Send Meeting Confirmation Email
+// ============================================================
+
+jobQueue.process<SendMeetingConfirmationPayload>(
+  JOB_TYPES.SEND_MEETING_CONFIRMATION,
+  async (job: Job<SendMeetingConfirmationPayload>) => {
+    const { leadId, campaignId, recipientEmail, meetingUrl, startTime } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    const db = getDatabase();
+    const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadId) as any;
+    if (!lead) throw new Error(`Lead ${leadId} not found`);
+
+    // Skip if already sent
+    const alreadySent = db.prepare(
+      `SELECT id FROM emails WHERE lead_id = ? AND type = 'meeting_confirm'`
+    ).get(leadId);
+    if (alreadySent) {
+      console.log(`[Worker] SEND_MEETING_CONFIRMATION skipped — already sent for lead ${leadId}`);
+      return;
+    }
+
+    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : {};
+    // Inject meeting details into profile so AI can reference them
+    if (meetingUrl) profile.meetingUrl = meetingUrl;
+    if (startTime) profile.meetingTime = new Date(startTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+    const context = {
+      yourName: _settings?.personalization?.yourName || "User",
+      yourCompany: _settings?.personalization?.yourCompany || "",
+      yourServices: _settings?.personalization?.yourServices || "",
+      emailType: "meeting_confirm" as const,
+    };
+
+    const emailContent = await generatePersonalizedEmail(profile, context, _settings?.ai);
+    await sendPersonalizedLeadEmail(profile, emailContent, recipientEmail, "meeting_confirm", _settings);
+
+    db.prepare(
+      `UPDATE leads SET status = 'meeting_booked', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`
+    ).run(leadId);
+
+    logActivity("meeting_confirmation_email_sent", "queue", { leadId, campaignId, recipientEmail, meetingUrl });
+  },
+);
+
+// ============================================================
+// Handler: Enrich Lead Email (find business email via API)
+// ============================================================
+
+jobQueue.process<EnrichLeadEmailPayload>(
+  JOB_TYPES.ENRICH_LEAD_EMAIL,
+  async (job: Job<EnrichLeadEmailPayload>) => {
+    const { leadId, campaignId } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    const db = getDatabase();
+    const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadId) as any;
+
+    if (!lead) {
+      console.log(`[Worker] Skipping ENRICH_LEAD_EMAIL — lead ${leadId} was deleted.`);
+      return;
+    }
+
+    // Skip if email already found (could be set by a parallel scrape job)
+    if (lead.email) {
+      console.log(`[Worker] ENRICH_LEAD_EMAIL skipped — lead ${leadId} already has email: ${lead.email}`);
+      jobQueue.enqueue<SendFollowupEmailPayload>(
+        JOB_TYPES.SEND_FOLLOWUP_EMAIL,
+        { leadId, campaignId, recipientEmail: lead.email },
+        { delayMs: 500, priority: 4 },
+      );
+      return;
+    }
+
+    const enrichedEmail = await enrichLeadEmail(
+      lead.first_name || "",
+      lead.last_name || "",
+      lead.company || "",
+      _settings?.enrichment,
+    );
+
+    if (!enrichedEmail) {
+      logActivity("enrichment_no_email_found", "enrichment", {
+        leadId,
+        firstName: lead.first_name,
+        lastName: lead.last_name,
+        company: lead.company,
+      });
+      return; // Nothing more we can do without an email
+    }
+
+    // Persist the enriched email
+    db.prepare(
+      `UPDATE leads SET email = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
+    ).run(enrichedEmail, leadId);
+
+    logActivity("enrichment_email_saved", "enrichment", {
+      leadId,
+      email: enrichedEmail,
+      company: lead.company,
+    });
+
+    // Chain directly into follow-up email now that we have the address
+    jobQueue.enqueue<SendFollowupEmailPayload>(
+      JOB_TYPES.SEND_FOLLOWUP_EMAIL,
+      { leadId, campaignId, recipientEmail: enrichedEmail },
+      { delayMs: 2000, priority: 4 },
+    );
   },
 );
 
@@ -566,6 +879,7 @@ jobQueue.process<CheckMessagesPayload>(
   JOB_TYPES.CHECK_MESSAGES,
   async (job: Job<CheckMessagesPayload>) => {
     if (!_settings) return;
+    enforceAnyActiveCampaign(); // skip inbox scanning if no campaign is active
     await ensureBrowserRunning();
 
     const messages = await readUnreadMessages();
@@ -579,6 +893,14 @@ jobQueue.process<CheckMessagesPayload>(
       if (!lead) {
         logActivity("message_ignored_not_lead", "linkedin", { sender: msg.senderName, url: msg.senderUrl });
         continue;
+      }
+
+      if (lead.campaign_id) {
+        const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(lead.campaign_id) as any;
+        if (campaign && campaign.status !== 'active') {
+          logActivity("message_ignored_campaign_paused", "linkedin", { sender: msg.senderName, url: msg.senderUrl });
+          continue;
+        }
       }
 
       const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { firstName: msg.senderName, linkedinUrl: msg.senderUrl };
@@ -618,21 +940,6 @@ jobQueue.process<CheckMessagesPayload>(
       messagesChecked: messages.length,
     });
 
-    // Re-enqueue if recurring
-    const { recurringIntervalMinutes } = job.payload;
-    if (recurringIntervalMinutes) {
-      jobQueue.enqueue<CheckMessagesPayload>(
-        JOB_TYPES.CHECK_MESSAGES,
-        {
-          recurringIntervalMinutes,
-        },
-        {
-          delayMs: recurringIntervalMinutes * 60 * 1000,
-          maxAttempts: 2,
-          dedupeKey: "periodic_message_check",
-        },
-      );
-    }
   },
 );
 
@@ -645,31 +952,109 @@ jobQueue.process<SendReplyDmPayload>(
   async (job: Job<SendReplyDmPayload>) => {
     enforceWorkingHours();
     await ensureBrowserRunning();
-    if (!_limitManager?.canPerform("messages"))
-      throw new Error("Daily message limit reached");
 
     const { leadId, linkedinUrl, replyContent, threadId } = job.payload;
     const db = getDatabase();
+    const lead = db.prepare("SELECT campaign_id FROM leads WHERE id = ?").get(leadId) as any;
+    enforceCampaignActive(lead?.campaign_id);
 
-    const result = await sendMessage(linkedinUrl, replyContent, {
-      isAutomated: true,
-      checkHandoff: true,
-      leadId: leadId
-    });
+    if (!_limitManager?.canPerform("messages"))
+      throw new Error("Daily message limit reached");
+
+    let result: { success: boolean; error?: string; handedOff?: boolean };
+
+    // Prefer thread-based sending (direct URL) — avoids profile nav issues
+    if (threadId) {
+      console.log(`[Worker] SEND_REPLY_DM — using thread-based send for thread: ${threadId}`);
+      result = await sendReplyInThread(threadId, replyContent, {
+        isAutomated: true,
+        leadId,
+      });
+    } else {
+      console.log(`[Worker] SEND_REPLY_DM — falling back to profile-based send for: ${linkedinUrl}`);
+      result = await sendMessage(linkedinUrl, replyContent, {
+        isAutomated: true,
+        checkHandoff: true,
+        leadId,
+      });
+    }
 
     if (result.success) {
       _limitManager.record("messages");
       db.prepare(
         `UPDATE leads SET status = 'in_conversation', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
       ).run(leadId);
-      logActivity("bot_reply_sent_via_queue", "queue", { leadId });
-    } else if (result.handedOff) {
+      logActivity("bot_reply_sent_via_queue", "queue", { leadId, viaThead: !!threadId });
+    } else if ((result as any).handedOff) {
       logActivity("bot_reply_cancelled_handoff", "queue", { leadId });
       db.prepare(
         `UPDATE leads SET status = 'handed_off', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
       ).run(leadId);
     } else {
       throw new Error(result.error || "Message send failed");
+    }
+  },
+);
+
+// ============================================================
+// Handler: Check Engaged Replies (Proactive Thread Polling)
+// ============================================================
+
+jobQueue.process<CheckEngagedRepliesPayload>(
+  JOB_TYPES.CHECK_ENGAGED_REPLIES,
+  async (job: Job<CheckEngagedRepliesPayload>) => {
+    if (!_settings) return;
+    enforceAnyActiveCampaign(); // skip thread polling if no campaign is active
+    await ensureBrowserRunning();
+
+    // The function below queries "engaged" leads and delegates `CHECK_LEAD_THREAD` jobs
+    await checkAllEngagedLeads(_settings);
+
+    // Re-enqueue if it's recurring
+    const intervalMinutes = job.payload.recurringIntervalMinutes;
+    if (intervalMinutes) {
+      jobQueue.enqueue<CheckEngagedRepliesPayload>(
+        JOB_TYPES.CHECK_ENGAGED_REPLIES,
+        { recurringIntervalMinutes: intervalMinutes },
+        {
+          delayMs: intervalMinutes * 60 * 1000,
+          maxAttempts: 2,
+          dedupeKey: "periodic_engaged_replies_check",
+        },
+      );
+    }
+  },
+);
+
+// ============================================================
+// Handler: Check Individual Lead Thread
+// ============================================================
+
+jobQueue.process<CheckLeadThreadPayload>(
+  JOB_TYPES.CHECK_LEAD_THREAD,
+  async (job: Job<CheckLeadThreadPayload>) => {
+    enforceWorkingHours();
+    await ensureBrowserRunning();
+
+    const { leadId, linkedinUrl, campaignId } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    const db = getDatabase();
+    const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadId) as any;
+    if (!lead) return;
+
+    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { firstName: lead.first_name, lastName: lead.last_name, linkedinUrl };
+
+    const context = {
+      yourName: _settings?.personalization?.yourName || "User",
+      yourCompany: _settings?.personalization?.yourCompany || "",
+      yourServices: _settings?.personalization?.yourServices || "",
+    };
+
+    const result = await checkLeadThreadForReply(leadId, profile, context, _settings);
+
+    if (result.error) {
+       throw new Error(result.error);
     }
   },
 );
@@ -708,16 +1093,16 @@ jobQueue.process<PruneJobQueuePayload>(
               warmup: { ...saved.warmup, currentDay: nextDay },
             });
           }
-          // console.log(`[Worker] Warmup advanced: day ${currentDay} → ${nextDay}/${rampUpDays}`);
+          console.log(`[Worker] Warmup advanced: day ${currentDay} → ${nextDay}/${rampUpDays}`);
           logActivity("warmup_day_advanced", "queue", { from: currentDay, to: nextDay, rampUpDays });
 
           // Re-apply limits with new warmup day
           updateWorkerSettings(_settings);
         } catch (e) {
-          // console.warn("[Worker] Could not persist warmup.currentDay:", e);
+          console.warn("[Worker] Could not persist warmup.currentDay:", e);
         }
       } else {
-        // console.log("[Worker] Warmup complete — running at full daily limits.");
+        console.log("[Worker] Warmup complete — running at full daily limits.");
       }
     }
 
@@ -745,18 +1130,78 @@ export function startQueueWorker(settings: any): void {
   initWorker(settings);
   jobQueue.start();
 
-  // Schedule recurring maintenance jobs
+  const db = getDatabase();
+
+  // ── Startup: Cancel all pending jobs for non-active campaigns ──────────────
+  // This is the definitive safety net. Any job that survived a crash or restart
+  // and belongs to a paused/draft campaign will be cancelled immediately.
+  // We do two passes:
+  //  1. Jobs with campaignId directly in payload
+  //  2. Jobs with leadId in payload — we look up the lead's campaign
+  try {
+    const pendingJobs = db.prepare(
+      `SELECT id, type, payload FROM job_queue WHERE status IN ('pending', 'running')`
+    ).all() as any[];
+
+    let startupCancelled = 0;
+    for (const row of pendingJobs) {
+      let campaignId: string | null = null;
+      try {
+        const payload = JSON.parse(row.payload || "{}");
+        if (payload.campaignId) {
+          campaignId = payload.campaignId;
+        } else if (payload.leadId) {
+          const lead = db.prepare("SELECT campaign_id FROM leads WHERE id = ?").get(payload.leadId) as any;
+          if (lead) campaignId = lead.campaign_id;
+        }
+      } catch { /* skip unparseable */ }
+
+      if (campaignId) {
+        const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(campaignId) as any;
+        if (campaign && campaign.status !== "active") {
+          db.prepare(
+            `UPDATE job_queue SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`
+          ).run(row.id);
+          startupCancelled++;
+        }
+      }
+    }
+
+    if (startupCancelled > 0) {
+      console.log(`[Worker] Startup sweep: cancelled ${startupCancelled} job(s) from non-active campaigns.`);
+      logActivity("startup_job_sweep", "queue", { cancelledCount: startupCancelled });
+    }
+  } catch (err) {
+    console.warn("[Worker] Startup job sweep failed (non-critical):", err);
+  }
+
+  // Cancel any stale CHECK_ACCEPTANCE jobs that may have been scheduled
+  // with old long delays. Re-enqueue fresh ones with a short initial delay.
+  db.prepare(
+    `UPDATE job_queue
+     SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+     WHERE type = ? AND status = 'pending'`
+  ).run(JOB_TYPES.CHECK_ACCEPTANCE);
+
+  // Fresh acceptance check: first run in 2 minutes, then every 2 hours
   jobQueue.enqueue<CheckAcceptancePayload>(
     JOB_TYPES.CHECK_ACCEPTANCE,
     {
-      recurringIntervalMinutes: 60,
+      recurringIntervalMinutes: 120,
     },
     {
-      delayMs: 5 * 60 * 1000, // Start first check after 5 min
-      maxAttempts: 1,
+      delayMs: 2 * 60 * 1000, // First check after 2 minutes
+      maxAttempts: 2,
       dedupeKey: "periodic_acceptance_check",
     },
   );
+
+  // Cancel stale message checks too and re-enqueue
+  db.prepare(
+    `UPDATE job_queue
+     SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+     WHERE type = ? AND status = 'pending'`
+  ).run(JOB_TYPES.CHECK_MESSAGES);
 
   jobQueue.enqueue<CheckMessagesPayload>(
     JOB_TYPES.CHECK_MESSAGES,
@@ -764,11 +1209,12 @@ export function startQueueWorker(settings: any): void {
       recurringIntervalMinutes: 30,
     },
     {
-      delayMs: 10 * 60 * 1000, // First check after 10 min
+      delayMs: 5 * 60 * 1000, // First check after 5 minutes
       maxAttempts: 2,
       dedupeKey: "periodic_message_check",
     },
   );
+
 
   jobQueue.enqueue<PruneJobQueuePayload>(
     JOB_TYPES.PRUNE_JOB_QUEUE,
@@ -780,7 +1226,20 @@ export function startQueueWorker(settings: any): void {
     },
   );
 
-  // console.log("[Worker] Queue worker started with recurring jobs scheduled.");
+  // STARTUP CHECK: Active Engaged leads
+  jobQueue.enqueue<CheckEngagedRepliesPayload>(
+    JOB_TYPES.CHECK_ENGAGED_REPLIES,
+    {
+      recurringIntervalMinutes: 120, // Run every 2 hours
+    },
+    {
+      delayMs: 30 * 60 * 1000, // First run 30 min after startup
+      maxAttempts: 2,
+      dedupeKey: "periodic_engaged_replies_check",
+    },
+  );
+
+  console.log("[Worker] Queue worker started with recurring jobs scheduled.");
 }
 
 /**

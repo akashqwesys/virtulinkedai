@@ -80,6 +80,20 @@ OUTPUT (valid JSON only):`;
       if (!Array.isArray(parsedData.skills)) parsedData.skills = [];
       if (!Array.isArray(parsedData.mutualConnections)) parsedData.mutualConnections = [];
 
+      // Normalize scalar string fields — LLM may return null, objects, or arrays for these.
+      // Coerce to '' so upstream callers never receive non-string values for text columns.
+      const scalarFields = ['firstName', 'lastName', 'headline', 'location', 'about', 'company', 'role', 'connectionDegree'] as const;
+      for (const field of scalarFields) {
+        const v = parsedData[field];
+        if (typeof v !== 'string') {
+          parsedData[field] = '';
+        }
+      }
+      // Ensure connectionDegree has a valid value
+      if (!['1st', '2nd', '3rd', 'Out of Network'].includes(parsedData.connectionDegree)) {
+        parsedData.connectionDegree = '3rd';
+      }
+
       console.log(`[AI/JSON] Attempt ${attempt}: ✅ Successfully parsed JSON.`);
       return parsedData;
       

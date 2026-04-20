@@ -35,3 +35,16 @@ npm-debug.log*
 
 # Browser data
 browser-data/
+
+# Temporary data and OCR artifacts
+temp_pdf/
+
+# Temporary build configs
+electron.vite.config.*.mjs
+
+# Root level scratch scripts and logs
+/*.js
+/*.mjs
+/*.log
+/*.png
+!electron.vite.config.ts

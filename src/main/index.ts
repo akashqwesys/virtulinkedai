@@ -10,6 +10,30 @@ process.env.TZ = "Asia/Kolkata";
 import { app, BrowserWindow, shell, ipcMain, globalShortcut } from "electron";
 import { join } from "path";
 
+// Prevent multiple instances AS EARLY AS POSSIBLE
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  process.exit(0);
+} else {
+  app.on("second-instance", () => {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+      if (windows[0].isMinimized()) windows[0].restore();
+      windows[0].focus();
+    }
+  });
+}
+
+// Handle graceful shutdown signals from dev environments
+if (process.platform === "win32") {
+  process.on("message", (msg) => {
+    if (msg === "graceful-exit") {
+      app.quit();
+    }
+  });
+}
+
 process.on("uncaughtException", (err) => {
   console.error("FATAL ERROR (uncaughtException):", err);
 });
@@ -93,6 +117,8 @@ import {
   sendEmail,
   createMeeting,
   getAvailableSlots,
+  getConnectionStatus,
+  disconnectMicrosoft,
 } from "./microsoft/email";
 import { DailyLimitManager } from "./browser/humanizer";
 import { startQueueWorker, stopQueueWorker, updateWorkerSettings } from "./queue/worker";
@@ -194,20 +220,24 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   // ---- Browser Control ----
+  ipcMain.removeHandler(IPC_CHANNELS.BROWSER_LAUNCH);
   ipcMain.handle(IPC_CHANNELS.BROWSER_LAUNCH, async () => {
     return await launchBrowser();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.BROWSER_STATUS);
   ipcMain.handle(IPC_CHANNELS.BROWSER_STATUS, () => {
     return getBrowserStatus();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.BROWSER_CLOSE);
   ipcMain.handle(IPC_CHANNELS.BROWSER_CLOSE, async () => {
     await closeBrowser();
     return { success: true };
   });
 
   // ---- LinkedIn ----
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_LOGIN);
   ipcMain.handle(IPC_CHANNELS.LINKEDIN_LOGIN, async () => {
     const launchResult = await launchBrowser();
     if (!launchResult.success)
@@ -237,10 +267,12 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return { success: false, error: "Login timed out" };
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_LOGIN_STATUS);
   ipcMain.handle(IPC_CHANNELS.LINKEDIN_LOGIN_STATUS, async () => {
     return await checkLoginStatus();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_LOGOUT);
   ipcMain.handle(IPC_CHANNELS.LINKEDIN_LOGOUT, async () => {
     const browserStatus = getBrowserStatus();
     if (browserStatus.status !== "running") {
@@ -249,6 +281,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return await logout();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_SCRAPE_PROFILE);
   ipcMain.handle(
     IPC_CHANNELS.LINKEDIN_SCRAPE_PROFILE,
     async (_event, profileUrl: string) => {
@@ -257,6 +290,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_SCRAPE_COMPANY);
   ipcMain.handle(
     IPC_CHANNELS.LINKEDIN_SCRAPE_COMPANY,
     async (_event, url: string) => {
@@ -275,6 +309,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_IMPORT_SEARCH);
   ipcMain.handle(
     IPC_CHANNELS.LINKEDIN_IMPORT_SEARCH,
     async (_event, data: { searchUrl: string; maxLeads?: number }) => {
@@ -291,6 +326,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler("LINKEDIN_START_AUTOPILOT");
   ipcMain.handle(
     "LINKEDIN_START_AUTOPILOT",
     async (_event, data: { searchUrl: string; maxLeads: number }) => {
@@ -324,12 +360,14 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler("LINKEDIN_STOP_AUTOPILOT");
   ipcMain.handle("LINKEDIN_STOP_AUTOPILOT", async () => {
     const { stopAutoPilot } = await import("./linkedin/autopilot");
     stopAutoPilot();
     return { success: true };
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_SEND_CONNECTION);
   ipcMain.handle(
     IPC_CHANNELS.LINKEDIN_SEND_CONNECTION,
     async (
@@ -364,6 +402,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_CHECK_CONNECTIONS);
   ipcMain.handle(
     IPC_CHANNELS.LINKEDIN_CHECK_CONNECTIONS,
     async (_event, leadUrls: string[]) => {
@@ -372,6 +411,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.LINKEDIN_SEND_MESSAGE);
   ipcMain.handle(
     IPC_CHANNELS.LINKEDIN_SEND_MESSAGE,
     async (
@@ -386,11 +426,13 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- AI ----
+  ipcMain.removeHandler(IPC_CHANNELS.AI_STATUS);
   ipcMain.handle(IPC_CHANNELS.AI_STATUS, async () => {
     const settings = getSettingsStore().get("settings");
     return await checkAIStatus(settings.ai);
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.AI_GENERATE);
   ipcMain.handle(
     IPC_CHANNELS.AI_GENERATE,
     async (
@@ -435,11 +477,13 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Email ----
+  ipcMain.removeHandler(IPC_CHANNELS.EMAIL_AUTH);
   ipcMain.handle(IPC_CHANNELS.EMAIL_AUTH, async () => {
     const settings = getSettingsStore().get("settings");
     return await authenticate(settings.microsoft);
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.EMAIL_SEND);
   ipcMain.handle(
     IPC_CHANNELS.EMAIL_SEND,
     async (
@@ -457,7 +501,19 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.EMAIL_STATUS);
+  ipcMain.handle(IPC_CHANNELS.EMAIL_STATUS, async () => {
+    const settings = getSettingsStore().get("settings");
+    return await getConnectionStatus(settings.microsoft);
+  });
+
+  ipcMain.removeHandler("email:disconnect");
+  ipcMain.handle("email:disconnect", async () => {
+    return await disconnectMicrosoft();
+  });
+
   // ---- Calendar ----
+  ipcMain.removeHandler(IPC_CHANNELS.CALENDAR_CREATE_MEETING);
   ipcMain.handle(
     IPC_CHANNELS.CALENDAR_CREATE_MEETING,
     async (
@@ -477,6 +533,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.CALENDAR_AVAILABLE_SLOTS);
   ipcMain.handle(
     IPC_CHANNELS.CALENDAR_AVAILABLE_SLOTS,
     async (
@@ -495,10 +552,12 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Settings ----
+  ipcMain.removeHandler(IPC_CHANNELS.SETTINGS_GET);
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => {
     return getSettingsStore().get("settings");
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.SETTINGS_UPDATE);
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_UPDATE,
     (_event, updates: Partial<AppSettings>) => {
@@ -508,6 +567,9 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
       // Notify background processes about updated settings
       updateWorkerSettings(merged);
+      import("./campaign/pipelineRunner").then(({ pipelineRunner }) => {
+         pipelineRunner.updateSettings(merged);
+      });
 
       logActivity("settings_updated", "settings", {
         updatedKeys: Object.keys(updates),
@@ -517,6 +579,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Activity Log ----
+  ipcMain.removeHandler(IPC_CHANNELS.ACTIVITY_LIST);
   ipcMain.handle(
     IPC_CHANNELS.ACTIVITY_LIST,
     (_event, data?: { limit?: number; module?: string }) => {
@@ -537,6 +600,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Campaigns ----
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_CREATE);
   ipcMain.handle(
     IPC_CHANNELS.CAMPAIGN_CREATE,
     async (
@@ -574,6 +638,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_UPDATE);
   ipcMain.handle(
     IPC_CHANNELS.CAMPAIGN_UPDATE,
     (_event, data: { campaignId: string; updates: Partial<Campaign> | any }) => {
@@ -614,6 +679,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_START);
   ipcMain.handle(IPC_CHANNELS.CAMPAIGN_START, async (_event, campaignId: string) => {
     const { CampaignRunner } = await import("./campaign/orchestrator");
     const settings = getSettingsStore().get("settings");
@@ -622,6 +688,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return { success: true };
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_PAUSE);
   ipcMain.handle(IPC_CHANNELS.CAMPAIGN_PAUSE, async (_event, campaignId: string) => {
     const { CampaignRunner } = await import("./campaign/orchestrator");
     const settings = getSettingsStore().get("settings");
@@ -651,6 +718,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     connectionDegree: l.connection_degree || "3rd"
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_LIST);
   ipcMain.handle(IPC_CHANNELS.CAMPAIGN_LIST, () => {
     const db = getDatabase();
     const rows = db
@@ -666,6 +734,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }));
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_STATUS);
   ipcMain.handle(IPC_CHANNELS.CAMPAIGN_STATUS, (_event, campaignId: string) => {
     const db = getDatabase();
     const campaign = db
@@ -695,6 +764,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   // ---- Leads ----
+  ipcMain.removeHandler(IPC_CHANNELS.LEAD_SAVE);
   ipcMain.handle(
     IPC_CHANNELS.LEAD_SAVE,
     (_event, data: {
@@ -737,6 +807,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_DELETE);
   ipcMain.handle(IPC_CHANNELS.CAMPAIGN_DELETE, async (_event, campaignId: string) => {
     try {
       const db = getDatabase();
@@ -774,6 +845,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.LEAD_DELETE);
   ipcMain.handle(
     IPC_CHANNELS.LEAD_DELETE,
     (_event, leadId: string) => {
@@ -808,6 +880,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.LEAD_LIST);
   ipcMain.handle(
     IPC_CHANNELS.LEAD_LIST,
     (_event, data?: { status?: string; limit?: number }) => {
@@ -815,11 +888,11 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
       const status = data?.status || "all";
       const limit = data?.limit || 1000;
 
-      let query = "SELECT * FROM leads";
+      let query = "SELECT * FROM leads WHERE campaign_id IS NULL";
       const params: any[] = [];
 
       if (status !== "all") {
-        query += " WHERE status = ?";
+        query += " AND status = ?";
         params.push(status);
       }
 
@@ -831,12 +904,14 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.LEAD_GET);
   ipcMain.handle(IPC_CHANNELS.LEAD_GET, (_event, leadId: string) => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM leads WHERE id = ?").get(leadId);
   });
 
   // ---- Campaign Add Leads ----
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_ADD_LEADS);
   ipcMain.handle(
     IPC_CHANNELS.CAMPAIGN_ADD_LEADS,
     (_event, data: { campaignId: string; leadUrls: string[] }) => {
@@ -885,11 +960,22 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Campaign Import From Page (AI bulk scraper + human-mimicry outreach) ----
+  ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_IMPORT_FROM_PAGE);
   ipcMain.handle(
     IPC_CHANNELS.CAMPAIGN_IMPORT_FROM_PAGE,
     async (_event, data: { campaignId: string; pageUrl: string }) => {
       try {
         const db = getDatabase();
+
+        // ── Hard guard: refuse to import if campaign is not active ──────────
+        const campaignCheck = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(data.campaignId) as any;
+        if (!campaignCheck) {
+          return { success: false, error: "Campaign not found." };
+        }
+        if (campaignCheck.status !== "active") {
+          return { success: false, error: "Campaign is paused. Resume the campaign before importing leads." };
+        }
+
         const settings = getSettingsStore().get("settings");
 
         // Initialize limitManager for outreach (same pattern as autopilot handler)
@@ -1014,6 +1100,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONTENT_SCHEDULE);
   ipcMain.handle(
     IPC_CHANNELS.CONTENT_SCHEDULE,
     async (
@@ -1053,6 +1140,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONTENT_CANCEL);
   ipcMain.handle(
     IPC_CHANNELS.CONTENT_CANCEL,
     async (_event, postId: string) => {
@@ -1061,16 +1149,19 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONTENT_LIST);
   ipcMain.handle(IPC_CHANNELS.CONTENT_LIST, async () => {
     const { getScheduledPosts } = await import("./content/scheduler");
     return getScheduledPosts();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONTENT_SUGGEST_TIMES);
   ipcMain.handle(IPC_CHANNELS.CONTENT_SUGGEST_TIMES, async () => {
     const { suggestPostingTimes } = await import("./content/scheduler");
     return suggestPostingTimes();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONTENT_PUBLISH);
   ipcMain.handle(
     IPC_CHANNELS.CONTENT_PUBLISH,
     async (_event, data: { content: string }) => {
@@ -1092,6 +1183,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Engagement ----
+  ipcMain.removeHandler(IPC_CHANNELS.ENGAGEMENT_RUN_SESSION);
   ipcMain.handle(
     IPC_CHANNELS.ENGAGEMENT_RUN_SESSION,
     async (
@@ -1119,6 +1211,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.ENGAGEMENT_REPLY_COMMENTS);
   ipcMain.handle(
     IPC_CHANNELS.ENGAGEMENT_REPLY_COMMENTS,
     async (_event, data?: { maxReplies?: number }) => {
@@ -1144,11 +1237,13 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Sales Navigator ----
+  ipcMain.removeHandler(IPC_CHANNELS.SALES_NAV_DETECT);
   ipcMain.handle(IPC_CHANNELS.SALES_NAV_DETECT, async () => {
     const { detectSalesNavigator } = await import("./linkedin/salesNavigator");
     return await detectSalesNavigator();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.SALES_NAV_SEARCH);
   ipcMain.handle(
     IPC_CHANNELS.SALES_NAV_SEARCH,
     async (
@@ -1163,6 +1258,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.SALES_NAV_SCRAPE);
   ipcMain.handle(
     IPC_CHANNELS.SALES_NAV_SCRAPE,
     async (_event, salesNavUrl: string) => {
@@ -1172,6 +1268,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.SALES_NAV_INMAIL);
   ipcMain.handle(
     IPC_CHANNELS.SALES_NAV_INMAIL,
     async (
@@ -1188,10 +1285,12 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   );
 
   // ---- Email Templates ----
+  ipcMain.removeHandler(IPC_CHANNELS.EMAIL_TEMPLATES_LIST);
   ipcMain.handle(IPC_CHANNELS.EMAIL_TEMPLATES_LIST, () => {
     return getEmailTemplates();
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.EMAIL_TEMPLATES_SAVE);
   ipcMain.handle(
     IPC_CHANNELS.EMAIL_TEMPLATES_SAVE,
     (
@@ -1211,6 +1310,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.EMAIL_TEMPLATES_DELETE);
   ipcMain.handle(IPC_CHANNELS.EMAIL_TEMPLATES_DELETE, (_event, id: string) => {
     deleteEmailTemplate(id);
     logActivity("template_deleted", "settings", { templateId: id });
@@ -1218,6 +1318,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   // ---- Connection Checker ----
+  ipcMain.removeHandler(IPC_CHANNELS.CONNECTION_CHECKER_START);
   ipcMain.handle(
     IPC_CHANNELS.CONNECTION_CHECKER_START,
     async (_event, intervalMinutes?: number) => {
@@ -1229,6 +1330,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     },
   );
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONNECTION_CHECKER_STOP);
   ipcMain.handle(IPC_CHANNELS.CONNECTION_CHECKER_STOP, async () => {
     const { stopConnectionChecker } =
       await import("./linkedin/connectionChecker");
@@ -1236,12 +1338,15 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return { success: true };
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONNECTION_CHECKER_RUN);
   ipcMain.handle(IPC_CHANNELS.CONNECTION_CHECKER_RUN, async () => {
     const { checkAllPendingConnections } =
       await import("./linkedin/connectionChecker");
-    return await checkAllPendingConnections();
+    const settings = getSettingsStore().get("settings");
+    return await checkAllPendingConnections(settings);
   });
 
+  ipcMain.removeHandler(IPC_CHANNELS.CONNECTION_CHECKER_HISTORY);
   ipcMain.handle(IPC_CHANNELS.CONNECTION_CHECKER_HISTORY, async () => {
     const { getRecentChecks } = await import("./linkedin/connectionChecker");
     return getRecentChecks(50);
@@ -1252,23 +1357,32 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
 // App Lifecycle
 // ============================================================
 
-app.whenReady().then(async () => {
-  // Initialize settings store first (needed by many modules)
-  await initSettingsStore();
+// Prevent duplicate execution if bundler accidentally requires entry twice
+if (!(global as any).__VIRTULINKED_BOOTSTRAPPED) {
+  (global as any).__VIRTULINKED_BOOTSTRAPPED = true;
 
-  // Set app user model id for Windows
-  electronApp.setAppUserModelId("com.vedaailab.virtulinked");
+  app.whenReady().then(async () => {
+    // Initialize settings store first (needed by many modules)
+    await initSettingsStore();
 
-  // Watch for devtools shortcuts in development
-  app.on("browser-window-created", (_, window) => {
-    optimizer.watchWindowShortcuts(window);
-  });
+    // Set app user model id for Windows
+    electronApp.setAppUserModelId("com.vedaailab.virtulinked");
+
+    // Watch for devtools shortcuts in development
+    app.on("browser-window-created", (_, window) => {
+      optimizer.watchWindowShortcuts(window);
+    });
 
   // Initialize database
   getDatabase();
 
   // Start background job worker
   startQueueWorker(getSettingsStore().get("settings"));
+  
+  // Start pipeline runner
+  const { pipelineRunner } = await import("./campaign/pipelineRunner");
+  pipelineRunner.init(getSettingsStore().get("settings"));
+  pipelineRunner.start();
 
   // Create the main window
   const mainWindow = createWindow();
@@ -1285,27 +1399,31 @@ app.whenReady().then(async () => {
     platform: process.platform,
   });
 
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
+} // End of global bootstrap guard
 
 app.on("window-all-closed", async () => {
   // Cleanup
   stopQueueWorker();
   stopTrackingServer();
-  await closeBrowser();
+  
+  // Prevent hang if browser fails to close gracefully
+  try {
+    await Promise.race([
+      closeBrowser(),
+      new Promise((resolve) => setTimeout(resolve, 3000))
+    ]);
+  } catch (e) {}
+  
   closeDatabase();
 
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
-
-// Prevent multiple instances
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  app.quit();
-}

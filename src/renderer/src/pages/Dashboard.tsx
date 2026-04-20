@@ -92,8 +92,21 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     checkBrowserStatus();
     checkLinkedInStatus();
     checkAIStatus();
+    checkEmailStatus();
     loadActivities();
   }, []);
+
+  async function checkEmailStatus() {
+    try {
+      const status = await window.api.email.getStatus();
+      setEmailStatus({
+        authenticated: !!status?.connected,
+        email: status?.userEmail || null,
+      });
+    } catch {
+      // Not available
+    }
+  }
 
   async function checkBrowserStatus() {
     try {

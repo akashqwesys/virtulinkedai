@@ -65,6 +65,7 @@ function initializeSchema(db: any): void {
       sql: `CREATE TABLE IF NOT EXISTS leads (
         id TEXT PRIMARY KEY,
         linkedin_url TEXT UNIQUE NOT NULL,
+        email TEXT DEFAULT '',
         first_name TEXT DEFAULT '',
         last_name TEXT DEFAULT '',
         headline TEXT DEFAULT '',
@@ -221,6 +222,9 @@ function initializeSchema(db: any): void {
 
   // 2. Migration: Ensure important columns exist (auto-healing for existing DBs)
   ensureColumnExists(db, "leads", "status", "TEXT DEFAULT 'new'");
+  ensureColumnExists(db, "leads", "email", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "leads", "interaction_count", "INTEGER DEFAULT 0");
+  ensureColumnExists(db, "leads", "chatbot_state", "TEXT DEFAULT 'idle'");
   ensureColumnExists(db, "campaigns", "status", "TEXT DEFAULT 'draft'");
   ensureColumnExists(db, "scheduled_posts", "status", "TEXT DEFAULT 'draft'");
   ensureColumnExists(
@@ -551,6 +555,29 @@ export function updateLeadStatus(id: string, status: string): void {
 }
 
 /**
+ * Coerce any value to a safe SQLite-bindable string.
+ * SQLite3 rejects: undefined, plain objects, arrays, booleans passed as strings.
+ * This guard converts all of those to '' or a string representation.
+ */
+function safeStr(val: unknown, fallback = ''): string {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'bigint') return String(val);
+  if (typeof val === 'boolean') return String(val);
+  // Arrays or objects — LLM can return these for string fields; coerce to empty string
+  return fallback;
+}
+
+/**
+ * Safely JSON-serialize a value that should be an array.
+ * If the LLM returns a non-array (string, null, object), defaults to [].
+ */
+function safeJsonArray(val: unknown): string {
+  if (Array.isArray(val)) return JSON.stringify(val);
+  return '[]';
+}
+
+/**
  * UPSERT a scraped LinkedIn profile into the leads table.
  * Keyed on linkedin_url — updates existing rows, inserts new ones.
  * Never touches campaign_id, connection_note, or any connection-flow columns.
@@ -575,6 +602,7 @@ export function upsertLeadProfile(profile: {
   isSalesNavigator: boolean;
   scrapedAt: string;
   rawData: Record<string, unknown>;
+  email?: string; // Optional — from Contact Info scrape or enrichment
 }, existingLeadId?: string): string {
   const db = getDatabase();
 
@@ -590,14 +618,17 @@ export function upsertLeadProfile(profile: {
 
   db.prepare(`
     INSERT INTO leads (
-      id, linkedin_url, first_name, last_name, headline, company, role,
+      id, linkedin_url, email, first_name, last_name, headline, company, role,
       location, about, experience_json, education_json, skills_json,
       recent_posts_json, mutual_connections_json, profile_image_url,
       connection_degree, is_sales_navigator, status, scraped_at,
       raw_data_json, updated_at
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?
+      @id, @linkedinUrl, @email, @firstName, @lastName, @headline, @company, @role,
+      @location, @about, @experience, @education, @skills,
+      @recentPosts, @mutualConnections, @profileImageUrl,
+      @connectionDegree, @isSalesNavigator, @status, @scrapedAt,
+      @rawData, @updatedAt
     )
     ON CONFLICT(linkedin_url) DO UPDATE SET
       first_name = excluded.first_name,
@@ -615,34 +646,38 @@ export function upsertLeadProfile(profile: {
       profile_image_url = excluded.profile_image_url,
       connection_degree = excluded.connection_degree,
       is_sales_navigator = excluded.is_sales_navigator,
+      -- Only update email if a new non-empty one is provided
+      email = CASE WHEN excluded.email != '' THEN excluded.email ELSE leads.email END,
       status = CASE WHEN leads.status = 'new' THEN 'profile_scraped' ELSE leads.status END,
       scraped_at = excluded.scraped_at,
       raw_data_json = excluded.raw_data_json,
-      updated_at = ?
-  `).run(
-    leadId,
-    profile.linkedinUrl,
-    profile.firstName,
-    profile.lastName,
-    profile.headline,
-    profile.company,
-    profile.role,
-    profile.location,
-    profile.about,
-    JSON.stringify(profile.experience),
-    JSON.stringify(profile.education),
-    JSON.stringify(profile.skills),
-    JSON.stringify(profile.recentPosts),
-    JSON.stringify(profile.mutualConnections),
-    profile.profileImageUrl,
-    profile.connectionDegree,
-    profile.isSalesNavigator ? 1 : 0,
-    newStatus,
-    profile.scrapedAt,
-    JSON.stringify(profile.rawData),
-    new Date().toISOString(), // VALUES updated_at (INSERT path)
-    new Date().toISOString()  // ON CONFLICT updated_at = ? (UPDATE path)
-  );
+      updated_at = excluded.updated_at
+  `).run({
+    // Use safeStr() for ALL scalar columns — guards against LLM returning objects/arrays
+    // for fields that must be strings. JSON.stringify() handles serialized array columns.
+    id:               safeStr(leadId, profile.id),
+    linkedinUrl:      safeStr(profile.linkedinUrl),
+    email:            safeStr(profile.email),
+    firstName:        safeStr(profile.firstName),
+    lastName:         safeStr(profile.lastName),
+    headline:         safeStr(profile.headline),
+    company:          safeStr(profile.company),
+    role:             safeStr(profile.role),
+    location:         safeStr(profile.location),
+    about:            safeStr(profile.about),
+    experience:       safeJsonArray(profile.experience),
+    education:        safeJsonArray(profile.education),
+    skills:           safeJsonArray(profile.skills),
+    recentPosts:      safeJsonArray(profile.recentPosts),
+    mutualConnections:safeJsonArray(profile.mutualConnections),
+    profileImageUrl:  safeStr(profile.profileImageUrl),
+    connectionDegree: safeStr(profile.connectionDegree, '3rd'),
+    isSalesNavigator: profile.isSalesNavigator ? 1 : 0,
+    status:           safeStr(newStatus, 'profile_scraped'),
+    scrapedAt:        safeStr(profile.scrapedAt, new Date().toISOString()),
+    rawData:          JSON.stringify(typeof profile.rawData === 'object' && profile.rawData !== null && !Array.isArray(profile.rawData) ? profile.rawData : {}),
+    updatedAt:        new Date().toISOString(),
+  });
 
   return leadId;
 }

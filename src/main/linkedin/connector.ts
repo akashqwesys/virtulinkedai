@@ -28,7 +28,7 @@ import {
   inPageNavigate,
 } from "../browser/humanizer";
 import { generateConnectionNote } from "../ai/personalizer";
-import { logActivity } from "../storage/database";
+import { logActivity, updateLeadStatus } from "../storage/database";
 
 /**
  * Send a connection request to a profile
@@ -81,12 +81,40 @@ export async function sendConnectionRequest(
   }
 
   try {
-    // Navigate to profile if not already there
+    // ── ALWAYS navigate to the target profile ─────────────────────────────
+    // We navigate unconditionally (not just-if-needed) because a concurrent
+    // job (e.g. CHECK_ACCEPTANCE) may have moved the browser to a different
+    // lead's page between SCRAPE_PROFILE finishing and this job starting.
+    // An optimistic "are we already there?" check is unsafe — even if the URL
+    // matches, the page may still be mid-navigation from a prior job.
+    console.log(`[Connector] Navigating to profile: ${profile.linkedinUrl}`);
     const currentUrl = page.url();
-    if (!currentUrl.includes(profile.linkedinUrl)) {
-      await inPageNavigate(page, profile.linkedinUrl);
-      await pageLoadDelay();
+    const normCurrent = currentUrl.replace(/\/$/, '').split('?')[0].toLowerCase();
+    const normTarget = profile.linkedinUrl.replace(/\/$/, '').split('?')[0].toLowerCase();
+
+    if (normCurrent !== normTarget) {
+      // We are on a different page — use inPageNavigate if we're within LinkedIn
+      // (SPA navigation), otherwise fall back to a full goto.
+      try {
+        await inPageNavigate(page, profile.linkedinUrl);
+      } catch (navErr) {
+        // inPageNavigate can fail if the current page is in a bad/transitional state.
+        // Fall back to a hard goto which is always reliable.
+        console.warn(`[Connector] inPageNavigate failed (${navErr instanceof Error ? navErr.message : navErr}) — falling back to page.goto()`);
+        await page.goto(profile.linkedinUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      }
+    } else {
+      // Same URL — but still reload to get a clean DOM state,
+      // in case the page is stuck mid-navigation from a previous job.
+      console.log(`[Connector] Already on target URL — reloading for a clean state...`);
+      await page.goto(profile.linkedinUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
+
+    // Wait for the profile card to fully mount before any DOM interaction
+    await page
+      .waitForSelector('.pv-top-card, .ph5.pb5, main, .core-rail', { timeout: 15000 })
+      .catch(() => null);
+    await pageLoadDelay();
 
     // Find the Connect button
     const connectButton = await findConnectButton(page);
@@ -145,8 +173,50 @@ export async function sendConnectionRequest(
     // We always try to add a note first (even if AI failed, we check availability).
     // If the modal doesn't offer the note option, we fall through to Route B.
     if (aiNote) {
-      const noteSent = await tryAddNoteFlow(page, aiNote);
-      if (noteSent) {
+      const noteFlowResult = await tryAddNoteFlow(page, aiNote);
+
+      // ── LINKEDIN MONTHLY CUSTOM NOTE LIMIT: popup dismissed, retry connect ──
+      // The Premium upsell popup was detected and dismissed. The original Connect
+      // modal is now gone. Re-find and re-click the Connect button, then fall into
+      // Route B to send without a note — completing the request successfully.
+      if (noteFlowResult === "LIMIT_DISMISSED_RETRY") {
+        console.log("[Connector] Premium popup dismissed — re-clicking Connect to send without a note...");
+        await humanDelay(1200, 2000);
+
+        const retryConnectBtn = await findConnectButton(page);
+        if (retryConnectBtn && retryConnectBtn !== "ALREADY_CONNECTED" && retryConnectBtn !== "EMAIL_NEEDED") {
+          try {
+            await humanClick(page, retryConnectBtn as any);
+          } catch {
+            const box2 = await (retryConnectBtn as any).boundingBox();
+            if (box2) {
+              await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 15 });
+              await page.mouse.click(box2.x + box2.width / 2, box2.y + box2.height / 2);
+            }
+          }
+          await humanDelay(1500, 2500);
+          await dismissHowDoYouKnowDialog(page);
+          await humanDelay(500, 1000);
+          // Route B will run below — fall through by not returning here
+          console.log("[Connector] Connect re-clicked after limit popup — falling through to 'Send without a note'.");
+        } else {
+          // If the Connect button is gone (already connected from the retry), treat as success
+          console.log("[Connector] Connect button gone after popup dismiss — likely already sent.");
+          logActivity("linkedin_invite_limit_reached", "linkedin", {
+            name: `${profile.firstName} ${profile.lastName}`,
+          }, "error");
+          return { success: false, noteSent: false, note: null, error: "LINKEDIN_LIMIT_REACHED" };
+        }
+      } else if (noteFlowResult === "LIMIT_REACHED") {
+        // Legacy sentinel — treat same as LIMIT_REACHED
+        console.log("[Connector] LinkedIn invitation limit confirmed. Returning LINKEDIN_LIMIT_REACHED.");
+        logActivity("linkedin_invite_limit_reached", "linkedin", {
+          name: `${profile.firstName} ${profile.lastName}`,
+        }, "error");
+        return { success: false, noteSent: false, note: null, error: "LINKEDIN_LIMIT_REACHED" };
+      }
+
+      if (noteFlowResult === true) {
         // ── POST-SEND VERIFICATION ──────────────────────────────────
         await humanDelay(1500, 2500);
         const verified = await verifyConnectionSent(page);
@@ -162,6 +232,7 @@ export async function sendConnectionRequest(
             note: aiNote,
             verified,
           });
+          updateLeadStatus(profile.id, "connection_requested");
           await randomIdleAction(page);
           return { success: true, noteSent: true, note: aiNote };
         }
@@ -174,7 +245,7 @@ export async function sendConnectionRequest(
           error: "Connection send could not be verified after note flow",
         };
       }
-      // If tryAddNoteFlow returns false, the "Add a note" button was not found.
+      // noteFlowResult === false: "Add a note" button not found.
       // Fall through to Route B (Send without a note).
       console.log("[Connector] 'Add a note' path unavailable — falling back to 'Send without a note'.");
     } else {
@@ -302,6 +373,7 @@ export async function sendConnectionRequest(
         noteLength: 0,
         verified,
       });
+      updateLeadStatus(profile.id, "connection_requested");
       await randomIdleAction(page);
       return { success: true, noteSent: false, note: null };
     }
@@ -387,13 +459,13 @@ async function verifyConnectionSent(page: Page): Promise<string | null> {
  * successfully. Returns false if the "Add a note" button was not found
  * (caller should fall back to Route B).
  */
-async function tryAddNoteFlow(page: Page, note: string): Promise<boolean> {
+async function tryAddNoteFlow(page: Page, note: string): Promise<boolean | "LIMIT_REACHED" | "LIMIT_DISMISSED_RETRY"> {
   // ── Step 1: Find "Add a note" button (up to 15s) ──────────────────
   console.log("[Connector] Looking for 'Add a note' button in modal…");
 
   // Attempt A: Puppeteer text selector constrained to buttons
   let addNoteBtn: any = await page
-    .waitForSelector('button::-p-text(Add a note)', { timeout: 15000 })
+    .waitForSelector('button::-p-text(Add a note), button::-p-text(Personalize), button::-p-text(Add note)', { timeout: 15000 })
     .catch(() => null);
 
   // Attempt B: ARIA selector
@@ -401,7 +473,7 @@ async function tryAddNoteFlow(page: Page, note: string): Promise<boolean> {
     console.log("[Connector] Text selector failed. Falling back to ARIA selector...");
     addNoteBtn = await page
       .waitForSelector('aria/Add a note', { timeout: 3000 })
-      .catch(() => null);
+      .catch(() => page.waitForSelector('aria/Personalize', { timeout: 3000 }).catch(() => null));
   }
 
   // Attempt C: Structural CSS (secondary modal button)
@@ -423,7 +495,7 @@ async function tryAddNoteFlow(page: Page, note: string): Promise<boolean> {
         const aria = (b.getAttribute('aria-label') || '').toLowerCase();
         const text = (b.textContent || '').toLowerCase();
         // Exact match phrases to avoid matching random modal text
-        if (aria.includes('add a note') || text === 'add a note' || text.includes('add a note')) {
+        if (aria.includes('add a note') || text === 'add a note' || text.includes('add a note') || aria.includes('personalize') || text.includes('personalize') || aria.includes('add note') || text.includes('add note') || aria.includes('custom note') || text.includes('custom note')) {
           return b;
         }
       }
@@ -469,12 +541,201 @@ async function tryAddNoteFlow(page: Page, note: string): Promise<boolean> {
     }
   }
 
-  // ── Step 2: Wait for LinkedIn to auto-focus the textarea ────────────────
-  // After clicking "Add a note", LinkedIn immediately auto-focuses the textarea.
-  // No need to click it — just wait 5–7s for the modal animation and React
-  // hydration to fully settle, then type straight into the focused field.
-  const waitMs = 5000 + Math.random() * 2000; // 5–7s, variable
-  console.log(`[Connector] Waiting ${Math.round(waitMs / 1000)}s for modal to settle (textarea auto-focused)…`);
+  // ── Step 2: Detect limit popup OR wait for textarea to appear ──────────
+  // After clicking "Add a note", LinkedIn shows EITHER:
+  //   A) A textarea (note field) — normal path, proceed
+  //   B) A "Send unlimited personalized invites with Premium" popup — dismiss & retry
+  //
+  // IMPORTANT: The Premium upsell popup is NOT in an artdeco modal container.
+  // It is a standalone div rendered directly in the page body. We must search
+  // the entire document body for keyword/button matches.
+  //
+  // We race these two detectors with a 8s timeout. Whichever resolves first wins.
+  const LIMIT_KEYWORDS = [
+    // Classic variants
+    "invitation limit",
+    "weekly invitation",
+    "monthly limit",
+    "limit for connection",
+    "reached the limit",
+    "too many invitations",
+    "limit your invitations",
+    "sending limit",
+    // 2024+ / Premium upsell popup variants (from observed popup DOM)
+    "monthly custom invites",
+    "personalized invites with premium",
+    "used all your monthly",
+    "unlimited personalized invites",
+    "try premium",
+    "1-month free trial",
+    "custom invites",
+    "send unlimited",
+  ];
+
+  // ── Helper: DOM-wide limit popup detector ───────────────────────────
+  // Searches the ENTIRE page body — not just artdeco containers — because
+  // LinkedIn's Premium upsell card is a standalone div with no recognized role.
+  const detectLimitPopupOnPage = async (): Promise<{ found: boolean; closeCoords: { x: number; y: number } | null }> => {
+    return page.evaluate((keywords: string[]) => {
+      const bodyStr = document.body.innerText || document.body.textContent || "";
+      const bodyText = bodyStr.toLowerCase().replace(/\s+/g, ' ');
+      const hasKeyword = keywords.some((k) => bodyText.includes(k));
+
+      // Also check for the "Try Premium" button anywhere on the page
+      const hasPremiumBtn = Array.from(document.querySelectorAll('button, a, [role="button"]')).some(el => {
+        const txt = (el.textContent || '').toLowerCase().replace(/\s+/g, ' ');
+        return txt.includes('try premium') || txt.includes('premium for ₹') || txt.includes('premium for $') || txt.includes('premium for £');
+      });
+
+      if (!hasKeyword && !hasPremiumBtn) return { found: false, closeCoords: null };
+
+      // Find the close/× button. Strategy:
+      //   1. Explicit aria-label selectors (works for artdeco modals)
+      //   2. Any button in the top-right corner of a visible positioned container
+      //   3. SVG × icon buttons
+      const closeSelectors = [
+        '[role="dialog"] button[aria-label="Dismiss"]',
+        '[role="dialog"] button[aria-label="Close"]',
+        '.artdeco-modal button[aria-label="Dismiss"]',
+        '.artdeco-modal button[aria-label="Close"]',
+        '.artdeco-modal__dismiss',
+        '[data-test-modal-close-btn]',
+        'button[aria-label="Dismiss"]',
+        'button[aria-label="Close"]',
+        'button[aria-label="close"]',
+      ];
+      for (const sel of closeSelectors) {
+        const btn = document.querySelector(sel) as HTMLElement | null;
+        if (btn) {
+          const r = btn.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) return { found: true, closeCoords: { x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+        }
+      }
+
+      // Fallback: find any visible button in the viewport that is positioned
+      // in the top-right corner of a card/popup (x > 60% viewport, y < 400px)
+      const vpW = window.innerWidth;
+      const allBtns = Array.from(document.querySelectorAll('button')) as HTMLElement[];
+      for (const btn of allBtns) {
+        const r = btn.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && r.width < 60 && r.height < 60) {
+          // Must be in the top-right region of the viewport
+          if (r.left > vpW * 0.5 && r.top > 0 && r.top < 400) {
+            const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+            const txt = (btn.textContent || '').trim();
+            // Prefer close-like buttons; skip CTA buttons
+            if (aria.includes('dismiss') || aria.includes('close') || txt === '×' || txt === '' ||
+                btn.querySelector('svg') !== null) {
+              return { found: true, closeCoords: { x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+            }
+          }
+        }
+      }
+
+      // Popup found but no close button identified
+      return { found: true, closeCoords: null };
+    }, LIMIT_KEYWORDS);
+  };
+
+  // ── PRE-RACE: Check for the Premium upsell popup AFTER a short delay ─────
+  // LinkedIn renders this popup asynchronously — wait briefly to let it mount
+  // before we check, then also check right before the textarea race.
+  await humanDelay(1000, 1500); // Let the popup mount if it's going to appear
+  const preRaceCheck = await detectLimitPopupOnPage().catch(() => ({ found: false, closeCoords: null }));
+
+  if (preRaceCheck.found) {
+    console.log("[Connector] ❌ LinkedIn invitation limit popup detected (pre-race check).");
+    if (preRaceCheck.closeCoords) {
+      const { x, y } = preRaceCheck.closeCoords;
+      console.log(`[Connector] Dismissing limit popup via × at (${Math.round(x)}, ${Math.round(y)})…`);
+      await page.mouse.move(x, y, { steps: 12 });
+      await humanDelay(200, 400);
+      await page.mouse.click(x, y);
+      await humanDelay(500, 900);
+    } else {
+      console.log("[Connector] Close button not found — pressing Escape.");
+      await page.keyboard.press("Escape");
+      await humanDelay(400, 700);
+    }
+    // Signal to the caller: limit popup was dismissed, retry Connect with no note
+    return "LIMIT_DISMISSED_RETRY";
+  }
+
+  console.log("[Connector] Waiting for textarea OR limit popup (up to 8s)…");
+
+  const raceResult = await Promise.race([
+    // Detector A: textarea appeared → normal flow
+    page
+      .waitForSelector('textarea[name="message"], textarea.connect-button-send-invite__custom-message', { timeout: 8000 })
+      .then(() => "TEXTAREA" as const)
+      .catch(() => null),
+
+    // Detector B: LinkedIn limit warning / Premium upsell popup appeared.
+    // CRITICAL FIX: Search the ENTIRE document body — the Premium upsell card
+    // is a standalone div NOT inside any artdeco modal container.
+    page
+      .waitForFunction(
+        (keywords: string[]) => {
+          const bodyStr = document.body.innerText || document.body.textContent || "";
+          const bodyText = bodyStr.toLowerCase().replace(/\s+/g, ' ');
+          const hasPremiumBtn = Array.from(document.querySelectorAll('button, a, [role="button"]')).some(el => {
+            const txt = (el.textContent || '').toLowerCase().replace(/\s+/g, ' ');
+            return txt.includes('try premium') || txt.includes('premium for ₹') ||
+                   txt.includes('premium for $') || txt.includes('premium for £');
+          });
+          return (hasPremiumBtn || keywords.some((k) => bodyText.includes(k))) ? "LIMIT" : false;
+        },
+        { timeout: 8000 },
+        LIMIT_KEYWORDS
+      )
+      .then(async (handle) => {
+        if (handle) return await handle.jsonValue();
+        return null;
+      })
+      .catch(() => null),
+  ]);
+
+  // Unwrap JSHandle if needed; treat null (both timed out) as TIMEOUT — NOT as textarea found
+  const resolvedResult: string | null = typeof raceResult === "string" ? raceResult : await page
+    .evaluate((r: any) => (typeof r === "string" ? r : null), raceResult)
+    .catch(() => null);
+
+  if (resolvedResult === "LIMIT") {
+    console.log("[Connector] ❌ LinkedIn invitation limit popup detected (race detector).");
+
+    // Use the same wide DOM-wide dismiss logic
+    const raceCheck = await detectLimitPopupOnPage().catch(() => ({ found: true, closeCoords: null }));
+    if (raceCheck.closeCoords) {
+      const { x, y } = raceCheck.closeCoords;
+      console.log(`[Connector] Dismissing limit popup via × at (${Math.round(x)}, ${Math.round(y)})…`);
+      await page.mouse.move(x, y, { steps: 12 });
+      await humanDelay(200, 400);
+      await page.mouse.click(x, y);
+      await humanDelay(500, 900);
+    } else {
+      console.log("[Connector] Close button not found — pressing Escape to dismiss popup.");
+      await page.keyboard.press("Escape");
+      await humanDelay(400, 700);
+    }
+
+    // Signal to the caller: dismiss succeeded, retry Connect with no note
+    return "LIMIT_DISMISSED_RETRY";
+  }
+
+  // ── Guard: if both detectors timed out (resolvedResult === null), bail out ──
+  // This prevents the critical bug where a null result falls through and the
+  // code tries to type into a textarea that may not exist.
+  if (resolvedResult !== "TEXTAREA") {
+    if (resolvedResult === null) {
+      console.log("[Connector] ⚠️  Neither textarea nor limit popup detected within 8s. Aborting note flow.");
+    }
+    // If it's LIMIT it was handled above; anything else is unexpected — bail.
+    return false;
+  }
+
+  // TEXTAREA appeared (normal path) — wait for the rest of the modal to settle
+  const waitMs = 1500 + Math.random() * 1000; // 1.5–2.5s (textarea already found, just let it hydrate)
+  console.log(`[Connector] Textarea confirmed. Waiting ${Math.round(waitMs / 1000)}s for modal to settle…`);
   await humanDelay(waitMs, waitMs);
 
   // ── Step 3: Type the AI note character by character via page.keyboard ────

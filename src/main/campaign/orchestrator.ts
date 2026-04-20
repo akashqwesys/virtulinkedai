@@ -10,6 +10,7 @@ import { v4 as uuid } from "uuid";
 import { jobQueue } from "../queue/jobQueue";
 import { JOB_TYPES } from "../queue/jobs";
 import type { ScrapeProfilePayload } from "../queue/jobs";
+import { abortCampaignImport } from "../linkedin/scraper";
 
 // ============================================================
 // Bimodal Stagger — human browsing gaps
@@ -66,54 +67,8 @@ export class CampaignRunner {
       "UPDATE campaigns SET status = 'active', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
     ).run(campaignId);
 
-    // Enqueue SCRAPE_PROFILE for leads still in 'queued' state
-    const queuedLeads = db
-      .prepare(
-        "SELECT id, linkedin_url FROM leads WHERE campaign_id = ? AND status = 'queued'",
-      )
-      .all(campaignId) as any[];
-
-    // Enqueue SEND_CONNECTION for leads already scraped (profile_scraped)
-    const scrapedLeads = db
-      .prepare(
-        "SELECT id, linkedin_url FROM leads WHERE campaign_id = ? AND status = 'profile_scraped'",
-      )
-      .all(campaignId) as any[];
-
-    let delay = 0;
-
-    // Stagger scrape jobs with bimodal human-like gaps
-    for (const lead of queuedLeads) {
-      jobQueue.enqueue<ScrapeProfilePayload>(
-        JOB_TYPES.SCRAPE_PROFILE,
-        {
-          leadId: lead.id,
-          linkedinUrl: lead.linkedin_url,
-          campaignId: campaignId,
-        },
-        { delayMs: delay },
-      );
-      delay += humanStaggerMs();
-    }
-
-    // Re-enqueue already-scraped leads directly for connection step
-    for (const lead of scrapedLeads) {
-      jobQueue.enqueue(
-        JOB_TYPES.SEND_CONNECTION,
-        {
-          leadId: lead.id,
-          linkedinUrl: lead.linkedin_url,
-          campaignId: campaignId,
-        },
-        { delayMs: delay, priority: 5 },
-      );
-      delay += humanStaggerMs();
-    }
-
     logActivity("campaign_started", "campaign", {
       campaignId,
-      enqueuedScrapeJobs: queuedLeads.length,
-      enqueuedConnectionJobs: scrapedLeads.length,
     });
   }
 
@@ -127,10 +82,32 @@ export class CampaignRunner {
       "UPDATE campaigns SET status = 'paused', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
     ).run(campaignId);
 
-    // Actually pausing queued jobs could mean cancelling them and re-enqueueing later,
-    // or just letting in-flight jobs finish.
-    // For simplicity, we just mark the campaign paused. If the worker checks campaign status, it would stop.
-    logActivity("campaign_paused", "campaign", { campaignId });
+    // ── Signal any in-flight importFromSearchUrl loops to stop ────────────
+    abortCampaignImport(campaignId);
+
+    // ── Hard-cancel ALL pending & running jobs for this campaign's leads ──
+    // This is the critical step: without this, recovered/pending jobs will
+    // continue to fire even though the campaign is paused.
+    const leads = db.prepare("SELECT id FROM leads WHERE campaign_id = ?").all(campaignId) as any[];
+    let cancelledCount = 0;
+    for (const lead of leads) {
+      const result = db.prepare(
+        `UPDATE job_queue SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+         WHERE status IN ('pending', 'running') AND json_extract(payload, '$.leadId') = ?`
+      ).run(lead.id);
+      cancelledCount += result.changes;
+    }
+
+    // Also cancel any campaign-level jobs (CHECK_ACCEPTANCE, CHECK_MESSAGES)
+    // that reference this campaignId in their payload
+    const campaignJobResult = db.prepare(
+      `UPDATE job_queue SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+       WHERE status IN ('pending', 'running') AND json_extract(payload, '$.campaignId') = ?`
+    ).run(campaignId);
+    cancelledCount += campaignJobResult.changes;
+
+    console.log(`[Orchestrator] Campaign ${campaignId} paused. Cancelled ${cancelledCount} pending/running job(s).`);
+    logActivity("campaign_paused", "campaign", { campaignId, cancelledJobs: cancelledCount });
   }
 
   /**

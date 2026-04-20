@@ -16,11 +16,15 @@ export const JOB_TYPES = {
   CHECK_ACCEPTANCE: "CHECK_ACCEPTANCE",
   SEND_WELCOME_DM: "SEND_WELCOME_DM",
   SEND_REPLY_DM: "SEND_REPLY_DM",
+  CHECK_ENGAGED_REPLIES: "CHECK_ENGAGED_REPLIES",
+  CHECK_LEAD_THREAD: "CHECK_LEAD_THREAD",
 
   // Email Sequence
   SEND_INTRO_EMAIL: "SEND_INTRO_EMAIL",
   SEND_WELCOME_EMAIL: "SEND_WELCOME_EMAIL",
   SEND_FOLLOWUP_EMAIL: "SEND_FOLLOWUP_EMAIL",
+  SEND_MEETING_CONFIRMATION: "SEND_MEETING_CONFIRMATION",
+  ENRICH_LEAD_EMAIL: "ENRICH_LEAD_EMAIL",
 
   // Content & Posting
   PUBLISH_SCHEDULED_POST: "PUBLISH_SCHEDULED_POST",
@@ -69,6 +73,17 @@ export interface SendReplyDmPayload {
   threadId: string;
 }
 
+export interface CheckEngagedRepliesPayload {
+  /** Re-enqueue after checking (for recurring checks) */
+  recurringIntervalMinutes?: number;
+}
+
+export interface CheckLeadThreadPayload {
+  leadId: string;
+  linkedinUrl: string;
+  campaignId: string;
+}
+
 export interface SendIntroEmailPayload {
   leadId: string;
   campaignId: string;
@@ -85,6 +100,19 @@ export interface SendFollowupEmailPayload {
   leadId: string;
   campaignId: string;
   recipientEmail: string;
+}
+
+export interface EnrichLeadEmailPayload {
+  leadId: string;
+  campaignId: string;
+}
+
+export interface SendMeetingConfirmationPayload {
+  leadId: string;
+  campaignId: string;
+  recipientEmail: string;
+  meetingUrl?: string;
+  startTime?: string; // ISO string
 }
 
 export interface PublishScheduledPostPayload {

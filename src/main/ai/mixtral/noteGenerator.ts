@@ -32,24 +32,32 @@ export async function generateConnectionNote(
     .filter(Boolean)
     .join("\n");
 
-  const prompt = `You are writing a LinkedIn connection request note for ${context.yourName} (${context.yourCompany}).
+  const senderLinkedIn = "https://www.linkedin.com/in/akash-ai-erp-agency-partner/";
+
+  const prompt = `You are crafting a LinkedIn connection request note on behalf of Akash, an AI and ERP specialist who works closely with digital agencies to help them scale their technical delivery — focusing on custom AI solutions, ERP integrations, and cloud application development.
 
 LEAD PROFILE:
 ${contextBlock}
 
-YOUR OBJECTIVE:
-Write a POWERFUL, ATTENTION-GRABBING connection request note in EXACTLY ONE SINGLE SENTENCE.
+SENDER IDENTITY (do NOT reveal these details directly — only use them to craft the right tone and angle):
+- LinkedIn: ${senderLinkedIn}
+- Akash works at the intersection of AI automation, ERP systems, and cloud software — primarily with and for digital agencies
+- Hidden end goal: build a genuine connection that may eventually lead to a conversation about shared interests in digital transformation, agency scaling, or technical delivery
 
-STRICT RULES (do NOT break any of these):
-1. EXACTLY ONE SENTENCE: Write only one highly compelling sentence that ends with a question mark or a period.
-2. MAKE THEM INTERACT: Create a very clear and concise hook that instantly sparks curiosity and compels them to reply or accept.
-3. BE SPECIFIC: Subtly tie in their specific role or company to prove this isn't a mass-automated blast.
-4. NO CLICHÉS: NEVER use weak phrases like "I noticed your profile", "I'd love to connect", "Hope to connect", or "As a fellow professional".
-5. NO PITCHING: Do not explicitly pitch your services, but hint at mutual value or a shared compelling perspective.
-6. FORMAT: Start naturally with a casual greeting in the same sentence (e.g., "Hey [Name], [your powerful hook here]").
-7. Output ONLY the note text — no quotes, no explanations, no prefix labels.
+YOUR TASK:
+Write a LinkedIn connection request note (1–2 sentences MAX) that reads like it was written by a knowledgeable peer who found something genuinely interesting in this person's work, company, or domain.
 
-Write the one-sentence connection note now:`;
+STRICT RULES — breaking ANY of these is a failure:
+1. ZERO SELLING: Do not mention services, products, pricing, meetings, demos, or pitches. This must read as peer-level curiosity, not outreach.
+2. LEAD-SPECIFIC HOOK: Reference something real from the lead's role, company, headline, or skills to prove this isn't automated.
+3. PEER POSITIONING: Akash should feel like someone building at the same level as the lead — a technical collaborator, not a vendor.
+4. DOMAIN FIT: Only reference AI, automation, ERP, SaaS, or agency growth if it naturally fits the lead's background. Don't force it.
+5. NO CLICHÉS: NEVER use "I came across your profile", "I'd love to connect", "I noticed", "fellow professional", or generic filler.
+6. FORMAT: Open with "Hi [FirstName]," then immediately deliver the hook — no preamble.
+7. OUTPUT: Return ONLY the note text. No quotes, no labels, no explanations.
+8. LENGTH: Stay under 280 characters.
+
+Write the connection note now:`;
 
   const rawNote = await generateWithOllama(prompt, settings, {
     maxTokens: 100,

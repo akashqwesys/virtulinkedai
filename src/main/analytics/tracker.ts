@@ -113,7 +113,7 @@ export function startTrackingServer(port: number = 3333): void {
   });
 
   server = app.listen(port, () => {
-    // console.log(`[Analytics] Tracking server running natively on port ${port}`);
+    console.log(`[Analytics] Tracking server running natively on port ${port}`);
   });
 }
 
@@ -121,6 +121,6 @@ export function stopTrackingServer(): void {
   if (server) {
     server.close();
     server = null;
-    // console.log("[Analytics] Tracking server stopped");
+    console.log("[Analytics] Tracking server stopped");
   }
 }

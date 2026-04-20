@@ -13,6 +13,7 @@ export interface LinkedInProfile {
   role: string;
   location: string;
   about: string;
+  email?: string;
   experience: Experience[];
   education: Education[];
   skills: string[];
@@ -56,6 +57,10 @@ export type LeadStatus =
   | "profile_scraped"
   | "connection_requested"
   | "connection_accepted"
+  | "welcome_sent"
+  | "in_conversation"
+  | "handed_off"
+  | "follow_up_sent"
   | "email_sent"
   | "email_opened"
   | "replied"
@@ -160,6 +165,7 @@ export type ChatbotState =
   | "building_rapport"
   | "sharing_value"
   | "suggesting_meeting"
+  | "booking_appointment"
   | "meeting_booked"
   | "handed_off";
 
@@ -242,6 +248,12 @@ export interface AppSettings {
     scopes: string[];
   };
 
+  // Email Enrichment (finds business emails for leads missing contact info)
+  enrichment: {
+    provider: "apollo" | "hunter" | "none";
+    apiKey: string;
+  };
+
   // Warm-up
   warmup: {
     enabled: boolean;
@@ -269,6 +281,11 @@ export interface AppSettings {
   // Analytics Tracking
   analytics: {
     trackingDomain: string; // e.g., https://my-ngrok-tunnel.ngrok.io
+  };
+
+  // Pipeline Runner Priorities
+  pipeline?: {
+    prioritizedSection: "queue" | "connecting" | "connected" | "engaged" | "none";
   };
 }
 
