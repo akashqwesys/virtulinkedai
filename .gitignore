@@ -43,8 +43,5 @@ temp_pdf/
 electron.vite.config.*.mjs
 
 # Root level scratch scripts and logs
-/*.js
-/*.mjs
-/*.log
-/*.png
-!electron.vite.config.ts
+# (Keeping these included as requested for "whole code")
+# !electron.vite.config.ts
