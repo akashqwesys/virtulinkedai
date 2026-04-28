@@ -700,6 +700,42 @@ async function extractNormalProfile(
 
     console.log(`[Scraper] Recent posts: ${recentPosts.length}`);
 
+    // ── Section 6.5: Other Sections (Certifications, Languages, etc) ────────
+    await gaussianSectionDelay();
+    const otherSections = await page.evaluate(() => {
+      const doc = document as any;
+      const main = doc.querySelector("main");
+      if (!main) return {};
+
+      const results: Record<string, string[]> = {};
+      const sections = Array.from(main.querySelectorAll("section.artdeco-card, section.pv-profile-section"));
+      for (const sec of sections) {
+        if ((sec as any).getBoundingClientRect().x > 850) continue;
+        
+        // Find header
+        const headerEl = (sec as any).querySelector("h2, h3, .pvs-header__title");
+        const headerName = headerEl?.textContent?.trim();
+        
+        // Skip ones we already extracted
+        if (!headerName || ["Activity", "Experience", "Education", "Skills", "About"].some(h => headerName.includes(h))) {
+          continue;
+        }
+
+        // Get all list items text
+        const items = Array.from((sec as any).querySelectorAll("li.pvs-list__item--line-separated, li.pv-profile-section__list-item"));
+        if (items.length > 0) {
+          results[headerName] = items.map((item: any) => item.innerText?.trim() || item.textContent?.trim() || "").filter(Boolean);
+        } else {
+          // Just get all text
+          const text = (sec as any).innerText?.trim() || (sec as any).textContent?.trim() || "";
+          if (text) results[headerName] = [text];
+        }
+      }
+      return results;
+    });
+
+    console.log(`[Scraper] Extracted extra sections: ${Object.keys(otherSections).join(", ")}`);
+
     // ── Section 7: Contact Info ───────────────────────────────
     await gaussianSectionDelay();
     const contactInfo = await extractContactInfo(page);
@@ -719,6 +755,7 @@ async function extractNormalProfile(
       location: identity.location,
       about,
       email: contactInfo?.email || undefined,
+      phone: contactInfo?.phone || undefined,
       experience,
       education,
       skills,
@@ -728,7 +765,10 @@ async function extractNormalProfile(
       connectionDegree: identity.connectionDegree as "1st" | "2nd" | "3rd" | "Out of Network",
       isSalesNavigator: false,
       scrapedAt: new Date().toISOString(),
-      rawData: {},
+      rawData: {
+        contactInfo: contactInfo || {},
+        extraSections: otherSections || {},
+      },
     };
   } catch (error: any) {
     console.error(`[Scraper] extractNormalProfile failed: ${error.message}`);

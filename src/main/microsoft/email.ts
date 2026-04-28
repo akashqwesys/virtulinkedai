@@ -23,6 +23,8 @@ let msalInstance: PublicClientApplication | null = null;
 let graphClient: Client | null = null;
 let accessToken: string | null = null;
 let authenticatedUserEmail: string | null = null;
+let lastClientId: string | null = null;
+let lastTenantId: string | null = null;
 
 /**
  * Initialize MSAL for desktop OAuth2 (PKCE flow)
@@ -31,6 +33,9 @@ export function initializeMSAL(settings: AppSettings["microsoft"]): void {
   if (!settings.clientId || !settings.tenantId) {
     throw new Error("Microsoft client ID and tenant ID are required");
   }
+
+  lastClientId = settings.clientId;
+  lastTenantId = settings.tenantId;
 
   msalInstance = new PublicClientApplication({
     auth: {
@@ -44,6 +49,78 @@ export function initializeMSAL(settings: AppSettings["microsoft"]): void {
 }
 
 /**
+ * Helper to perform login via Electron's BrowserWindow instead of System Browser,
+ * allowing us to detect errors like "AADSTS700016" natively without hanging.
+ */
+async function performInteractiveAuth(
+  msalInstance: PublicClientApplication,
+  settings: AppSettings["microsoft"]
+) {
+  let customReject: ((e: Error) => void) | null = null;
+  let authWindow: any = null;
+  
+  const rejectPromise = new Promise<any>((_, reject) => {
+    customReject = reject;
+  });
+
+  const msalOptions = {
+    scopes: settings.scopes,
+    openBrowser: async (url: string) => {
+      const { BrowserWindow } = await import("electron");
+      authWindow = new BrowserWindow({
+        width: 800,
+        height: 700,
+        title: "Microsoft 365 Sign In",
+        alwaysOnTop: true,
+        webPreferences: { nodeIntegration: false, contextIsolation: true },
+      });
+
+      authWindow.setMenuBarVisibility(false);
+
+      const checkInterval = setInterval(async () => {
+        if (!authWindow || authWindow.isDestroyed()) {
+          clearInterval(checkInterval);
+          return;
+        }
+        try {
+          const pageText = await authWindow.webContents.executeJavaScript(`document.body.innerText`);
+          if (pageText.includes("AADSTS") || pageText.includes("trouble signing you in")) {
+            const match = pageText.match(/(AADSTS\d+:[^\n]+)/);
+            const errorMsg = match
+              ? match[1].trim()
+              : "Microsoft Login Error: Invalid Application or Tenant configuration. Please verify your credentials.";
+            clearInterval(checkInterval);
+            authWindow.destroy();
+            customReject!(new Error(errorMsg));
+          }
+        } catch { /* ignore */ }
+      }, 1000);
+
+      authWindow.on("closed", () => {
+        clearInterval(checkInterval);
+        customReject!(new Error("Login window was closed by the user."));
+      });
+
+      await authWindow.loadURL(url);
+    },
+    successTemplate: '<h1 style="font-family:sans-serif;text-align:center;margin-top:20%">Authentication Successful</h1><p style="text-align:center;">Returning to app...</p>',
+    errorTemplate: '<h1 style="font-family:sans-serif;text-align:center;margin-top:20%;color:red;">Authentication Failed</h1><p style="text-align:center;">Please try again.</p>',
+  };
+
+  try {
+    const tokenResponse = await Promise.race([
+      msalInstance.acquireTokenInteractive(msalOptions),
+      rejectPromise,
+    ]);
+    return tokenResponse;
+  } finally {
+    if (authWindow && !authWindow.isDestroyed()) {
+      authWindow.destroy();
+    }
+  }
+}
+
+/**
  * Authenticate with Microsoft (interactive login)
  * Opens a browser window for the user to sign in
  */
@@ -51,7 +128,7 @@ export async function authenticate(
   settings: AppSettings["microsoft"],
 ): Promise<{ success: boolean; userEmail?: string; error?: string }> {
   try {
-    if (!msalInstance) {
+    if (!msalInstance || lastClientId !== settings.clientId || lastTenantId !== settings.tenantId) {
       initializeMSAL(settings);
     }
 
@@ -68,34 +145,14 @@ export async function authenticate(
       } catch (silentError) {
         if (silentError instanceof InteractionRequiredAuthError) {
           // Token expired, need interactive login
-          tokenResponse = await msalInstance!.acquireTokenInteractive({
-            scopes: settings.scopes,
-            openBrowser: async (url) => {
-              // Open in system browser
-              const { shell } = await import("electron");
-              await shell.openExternal(url);
-            },
-            successTemplate:
-              "<h1>Authentication Successful</h1><p>You can close this window.</p>",
-            errorTemplate:
-              "<h1>Authentication Failed</h1><p>Please try again.</p>",
-          });
+          tokenResponse = await performInteractiveAuth(msalInstance!, settings);
         } else {
           throw silentError;
         }
       }
     } else {
       // No cached accounts, interactive login required
-      tokenResponse = await msalInstance!.acquireTokenInteractive({
-        scopes: settings.scopes,
-        openBrowser: async (url) => {
-          const { shell } = await import("electron");
-          await shell.openExternal(url);
-        },
-        successTemplate:
-          "<h1>Authentication Successful</h1><p>You can close this window.</p>",
-        errorTemplate: "<h1>Authentication Failed</h1><p>Please try again.</p>",
-      });
+      tokenResponse = await performInteractiveAuth(msalInstance!, settings);
     }
 
     if (tokenResponse) {
@@ -137,12 +194,12 @@ export async function getConnectionStatus(
 ): Promise<{ connected: boolean; userEmail?: string }> {
   try {
     // If we already have a token in memory, return immediately
-    if (accessToken && authenticatedUserEmail) {
+    if (accessToken && authenticatedUserEmail && lastClientId === settings.clientId && lastTenantId === settings.tenantId) {
       return { connected: true, userEmail: authenticatedUserEmail };
     }
 
     // Try to restore from token cache (silent — no browser popup)
-    if (!msalInstance) {
+    if (!msalInstance || lastClientId !== settings.clientId || lastTenantId !== settings.tenantId) {
       if (!settings.clientId || !settings.tenantId) {
         return { connected: false };
       }

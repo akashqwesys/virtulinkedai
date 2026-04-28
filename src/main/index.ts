@@ -110,7 +110,11 @@ import {
   readUnreadMessages,
   processChatbotMessage,
   sendWelcomeDM,
+  scrapeAndSaveThread,
+  sendReplyInThreadOnPage,
+  scrapeAllLinkedInConversations,
 } from "./linkedin/messenger";
+
 import { checkAIStatus } from "./ai/personalizer";
 import {
   authenticate,
@@ -126,8 +130,14 @@ import { jobQueue } from "./queue/jobQueue";
 import { JOB_TYPES } from "./queue/jobs";
 import type { ScrapeProfilePayload } from "./queue/jobs";
 import { startTrackingServer, stopTrackingServer } from "./analytics/tracker";
+import {
+  getInboxPage,
+  getInboxBrowserStatus,
+  closeInboxBrowser,
+} from "./browser/inbox-engine";
 import { v4 as uuidv4 } from "uuid";
 import type Store from "electron-store";
+
 
 // Persistent settings store (lazy-init via async import for ESM compatibility in CJS)
 let _settingsStore: Store<{ settings: AppSettings }> | null = null;
@@ -712,10 +722,13 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     scrapedAt: l.scraped_at,
     location: l.location || "",
     about: l.about || "",
+    email: l.email || "",
+    phone: l.phone_number || "",
     experience: JSON.parse(l.experience_json || "[]"),
     education: JSON.parse(l.education_json || "[]"),
     skills: JSON.parse(l.skills_json || "[]"),
-    connectionDegree: l.connection_degree || "3rd"
+    connectionDegree: l.connection_degree || "3rd",
+    rawData: JSON.parse(l.raw_data_json || "{}")
   });
 
   ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_LIST);
@@ -888,19 +901,23 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
       const status = data?.status || "all";
       const limit = data?.limit || 1000;
 
-      let query = "SELECT * FROM leads WHERE campaign_id IS NULL";
+      let query = "SELECT leads.*, campaigns.name as campaign_name FROM leads LEFT JOIN campaigns ON leads.campaign_id = campaigns.id";
       const params: any[] = [];
 
       if (status !== "all") {
-        query += " AND status = ?";
+        query += " WHERE leads.status = ?";
         params.push(status);
       }
 
-      query += " ORDER BY created_at DESC LIMIT ?";
+      query += " ORDER BY leads.updated_at DESC LIMIT ?";
       params.push(limit);
 
       const rows = db.prepare(query).all(...params) as any[];
-      return rows.map(mapLeadToSharedType);
+      return rows.map((l: any) => ({
+        ...mapLeadToSharedType(l),
+        campaignId: l.campaign_id,
+        campaignName: l.campaign_name
+      }));
     },
   );
 
@@ -1351,6 +1368,336 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
     const { getRecentChecks } = await import("./linkedin/connectionChecker");
     return getRecentChecks(50);
   });
+
+  // ---- System ----
+  ipcMain.removeHandler(IPC_CHANNELS.SYSTEM_GET_DB_PATH);
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_GET_DB_PATH, async () => {
+    const path = await import("path");
+    return path.join(app.getPath("userData"), "virtulinked.db");
+  });
+
+  // ---- Inbox ----
+
+  // Get inbox browser status (no launch triggered)
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_BROWSER_STATUS);
+  ipcMain.handle(IPC_CHANNELS.INBOX_BROWSER_STATUS, () => {
+    return getInboxBrowserStatus();
+  });
+
+  // Scrape ALL conversations from LinkedIn messaging sidebar → persist to inbox_contacts
+  ipcMain.removeHandler('inbox:scrape-all');
+  ipcMain.handle('inbox:scrape-all', async () => {
+    try {
+      const inboxPage = await getInboxPage();
+      const conversations = await scrapeAllLinkedInConversations(inboxPage);
+      if (conversations.length === 0) {
+        return { success: false, error: 'No conversations found. Make sure you are logged into LinkedIn in the inbox browser.', count: 0 };
+      }
+
+      const db = getDatabase();
+      const upsert = db.prepare(`
+        INSERT INTO inbox_contacts (id, name, headline, avatar_url, thread_url, last_message, last_message_at, unread_count, synced_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          headline = excluded.headline,
+          avatar_url = excluded.avatar_url,
+          last_message = excluded.last_message,
+          last_message_at = excluded.last_message_at,
+          unread_count = excluded.unread_count,
+          synced_at = excluded.synced_at
+      `);
+
+      // Also try to match contacts to existing leads
+      const matchLead = db.prepare(`SELECT id FROM leads WHERE first_name || ' ' || last_name LIKE ? LIMIT 1`);
+
+      db.transaction(() => {
+        for (const conv of conversations) {
+          // Use thread URL as stable ID key (hash it)
+          const id = Buffer.from(conv.threadUrl).toString('base64').slice(0, 40);
+          const existingLead = matchLead.get(`%${conv.name}%`) as any;
+          upsert.run(
+            id, conv.name, conv.headline, conv.avatarUrl, conv.threadUrl,
+            conv.lastMessage, conv.lastMessageAt, conv.unreadCount,
+            new Date().toISOString()
+          );
+          // Link to lead if matched
+          if (existingLead) {
+            db.prepare('UPDATE inbox_contacts SET lead_id = ? WHERE id = ?').run(existingLead.id, id);
+          }
+        }
+      })();
+
+      logActivity('inbox_scrape_all_done', 'inbox', { count: conversations.length });
+      return { success: true, count: conversations.length };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Scrape failed', count: 0 };
+    }
+  });
+
+  // Get ALL inbox entries: inbox_contacts (full LinkedIn sidebar) merged with known leads
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_GET_LEADS);
+  ipcMain.handle(IPC_CHANNELS.INBOX_GET_LEADS, () => {
+    const db = getDatabase();
+
+    // inbox_contacts rows (from scrape-all)
+    const contacts = db.prepare(`
+      SELECT
+        ic.id, ic.name, ic.headline, ic.avatar_url, ic.thread_url,
+        ic.last_message, ic.last_message_at, ic.unread_count, ic.lead_id,
+        l.first_name, l.last_name, l.company, l.linkedin_url,
+        l.status as lead_status, l.chatbot_state,
+        l.profile_image_url
+      FROM inbox_contacts ic
+      LEFT JOIN leads l ON ic.lead_id = l.id
+      ORDER BY ic.last_message_at DESC
+    `).all() as any[];
+
+    // Also grab leads that have conversations but no inbox_contact row yet
+    const leadsWithConvos = db.prepare(`
+      SELECT
+        l.id, l.first_name, l.last_name, l.headline, l.company,
+        l.linkedin_url, l.thread_url, l.status, l.chatbot_state,
+        l.profile_image_url,
+        (SELECT content FROM conversations WHERE lead_id = l.id ORDER BY sent_at DESC LIMIT 1) as last_message,
+        (SELECT sent_at FROM conversations WHERE lead_id = l.id ORDER BY sent_at DESC LIMIT 1) as last_message_at,
+        (
+          SELECT COUNT(*) FROM conversations
+          WHERE lead_id = l.id AND direction = 'inbound'
+            AND sent_at > COALESCE((
+              SELECT sent_at FROM conversations
+              WHERE lead_id = l.id AND direction = 'outbound'
+              ORDER BY sent_at DESC LIMIT 1
+            ), '1970-01-01')
+        ) as unread_count
+      FROM leads l
+      WHERE
+        l.id NOT IN (SELECT lead_id FROM inbox_contacts WHERE lead_id IS NOT NULL)
+        AND (
+          l.status IN ('connected','welcome_sent','in_conversation','handed_off','meeting_booked')
+          OR l.id IN (SELECT DISTINCT lead_id FROM conversations)
+        )
+      ORDER BY last_message_at DESC
+    `).all() as any[];
+
+    // Build unified list: inbox_contacts first (includes all LinkedIn conversations)
+    const unified: any[] = [];
+    const seenIds = new Set<string>();
+
+    for (const c of contacts) {
+      const id = c.lead_id || c.id;
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+      unified.push({
+        id,
+        inboxContactId: c.id,
+        firstName: c.first_name || c.name?.split(' ')[0] || '',
+        lastName: c.last_name || c.name?.split(' ').slice(1).join(' ') || '',
+        fullName: c.name || `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+        headline: c.headline || '',
+        company: c.company || '',
+        linkedinUrl: c.linkedin_url || '',
+        threadUrl: c.thread_url || '',
+        status: c.lead_status || 'contact',
+        chatbotState: c.chatbot_state || 'idle',
+        profileImageUrl: c.profile_image_url || c.avatar_url || '',
+        lastMessage: c.last_message || '',
+        lastMessageAt: c.last_message_at || '',
+        unreadCount: c.unread_count || 0,
+        isLinkedInContact: true,
+      });
+    }
+
+    for (const l of leadsWithConvos) {
+      if (seenIds.has(l.id)) continue;
+      seenIds.add(l.id);
+      unified.push({
+        id: l.id,
+        inboxContactId: null,
+        firstName: l.first_name || '',
+        lastName: l.last_name || '',
+        fullName: `${l.first_name || ''} ${l.last_name || ''}`.trim(),
+        headline: l.headline || '',
+        company: l.company || '',
+        linkedinUrl: l.linkedin_url || '',
+        threadUrl: l.thread_url || '',
+        status: l.status || 'contact',
+        chatbotState: l.chatbot_state || 'idle',
+        profileImageUrl: l.profile_image_url || '',
+        lastMessage: l.last_message || '',
+        lastMessageAt: l.last_message_at || '',
+        unreadCount: l.unread_count || 0,
+        isLinkedInContact: false,
+      });
+    }
+
+    return unified;
+  });
+
+  // Get all stored messages for a lead from DB (fast, no Puppeteer)
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_GET_MESSAGES);
+  ipcMain.handle(IPC_CHANNELS.INBOX_GET_MESSAGES, (_event, leadId: string) => {
+    const db = getDatabase();
+    return db.prepare(
+      'SELECT id, lead_id, direction, content, platform, is_automated, sent_at FROM conversations WHERE lead_id = ? ORDER BY sent_at ASC'
+    ).all(leadId).map((r: any) => ({
+      id: r.id,
+      leadId: r.lead_id,
+      direction: r.direction,
+      content: r.content,
+      platform: r.platform,
+      isAutomated: !!r.is_automated,
+      sentAt: r.sent_at,
+    }));
+  });
+
+  // Sync a lead's thread from LinkedIn using the inbox browser
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_SYNC_THREAD);
+  ipcMain.handle(IPC_CHANNELS.INBOX_SYNC_THREAD, async (_event, leadId: string) => {
+    try {
+      const db = getDatabase();
+      const lead = db.prepare('SELECT first_name, last_name FROM leads WHERE id = ?').get(leadId) as any;
+      if (!lead) return { success: false, error: 'Lead not found', messages: [] };
+
+      const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown';
+      const inboxPage = await getInboxPage(); // singleton — launches once
+      const messages = await scrapeAndSaveThread(leadId, fullName, inboxPage);
+      return { success: true, messages };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Sync failed', messages: [] };
+    }
+  });
+
+  // Send a manual message from inbox (uses inbox browser, marks chatbot handed_off)
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_SEND_MANUAL);
+  ipcMain.handle(
+    IPC_CHANNELS.INBOX_SEND_MANUAL,
+    async (_event, data: { leadId: string; threadId: string; message: string }) => {
+      try {
+        const inboxPage = await getInboxPage(); // singleton
+        const result = await sendReplyInThreadOnPage(
+          inboxPage,
+          data.threadId || data.leadId,
+          data.message,
+          { isAutomated: false, leadId: data.leadId }
+        );
+        return result;
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Send failed' };
+      }
+    }
+  );
+
+  // Send welcome DM via campaign browser (automation — doesn't use inbox browser)
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_SEND_WELCOME);
+  ipcMain.handle(IPC_CHANNELS.INBOX_SEND_WELCOME, async (_event, leadId: string) => {
+    try {
+      const db = getDatabase();
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId) as any;
+      if (!lead) return { success: false, message: 'Lead not found' };
+
+      const settings = getSettingsStore().get('settings');
+      const profile = {
+        id: lead.id,
+        linkedinUrl: lead.linkedin_url,
+        firstName: lead.first_name || '',
+        lastName: lead.last_name || '',
+        headline: lead.headline || '',
+        company: lead.company || '',
+        role: lead.role || '',
+        location: lead.location || '',
+        about: lead.about || '',
+        experience: JSON.parse(lead.experience_json || '[]'),
+        education: JSON.parse(lead.education_json || '[]'),
+        skills: JSON.parse(lead.skills_json || '[]'),
+        recentPosts: JSON.parse(lead.recent_posts_json || '[]'),
+        mutualConnections: JSON.parse(lead.mutual_connections_json || '[]'),
+        profileImageUrl: lead.profile_image_url || '',
+        connectionDegree: lead.connection_degree || '1st',
+        isSalesNavigator: !!lead.is_sales_navigator,
+        scrapedAt: lead.scraped_at || '',
+        rawData: JSON.parse(lead.raw_data_json || '{}'),
+      };
+
+      return await sendWelcomeDM(
+        profile,
+        {
+          yourName: settings.profile.name,
+          yourCompany: settings.profile.company,
+          yourServices: settings.profile.services,
+        },
+        settings
+      );
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Welcome DM failed' };
+    }
+  });
+
+  // Schedule a meeting with a lead
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_SCHEDULE_MEETING);
+  ipcMain.handle(
+    IPC_CHANNELS.INBOX_SCHEDULE_MEETING,
+    async (_event, data: { leadId: string; slotStart: string; durationMinutes?: number }) => {
+      try {
+        const db = getDatabase();
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(data.leadId) as any;
+        if (!lead) return { success: false, error: 'Lead not found' };
+
+        const attendeeName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim();
+        const result = await createMeeting(
+          lead.email || '',
+          attendeeName,
+          {
+            startTime: new Date(data.slotStart),
+            durationMinutes: data.durationMinutes || 30,
+            subject: `Meeting with ${attendeeName}`,
+          }
+        );
+
+        if (result.success) {
+          db.prepare(`UPDATE leads SET status = 'meeting_booked', updated_at = ? WHERE id = ?`)
+            .run(new Date().toISOString(), data.leadId);
+          logActivity('meeting_scheduled_from_inbox', 'inbox', { leadId: data.leadId, slotStart: data.slotStart });
+        }
+
+        return result;
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Meeting scheduling failed' };
+      }
+    }
+  );
+
+  // Poll LinkedIn for new unread messages (uses campaign browser)
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_POLL_UNREAD);
+  ipcMain.handle(IPC_CHANNELS.INBOX_POLL_UNREAD, async () => {
+    try {
+      const unread = await readUnreadMessages();
+      if (unread.length > 0) {
+        const db = getDatabase();
+        for (const thread of unread) {
+          // Try to match to a known lead by senderUrl
+          let lead: any = null;
+          if (thread.senderUrl) {
+            lead = db.prepare('SELECT id FROM leads WHERE linkedin_url LIKE ?').get(`%${thread.senderUrl.split('?')[0]}%`);
+          }
+          if (lead && thread.lastMessage) {
+            const exists = db.prepare('SELECT id FROM conversations WHERE lead_id = ? AND content = ?').get(lead.id, thread.lastMessage);
+            if (!exists) {
+              db.prepare(`
+                INSERT INTO conversations (id, lead_id, direction, content, platform, is_automated, sent_at)
+                VALUES (?, ?, 'inbound', ?, 'linkedin', 0, ?)
+              `).run(uuidv4(), lead.id, thread.lastMessage, new Date().toISOString());
+            }
+          }
+        }
+        // Push event to renderer
+        BrowserWindow.getAllWindows()[0]?.webContents.send(IPC_CHANNELS.INBOX_NEW_MESSAGE, { threads: unread });
+      }
+      return { success: true, count: unread.length };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Poll failed', count: 0 };
+    }
+  });
 }
 
 // ============================================================
@@ -1413,10 +1760,10 @@ app.on("window-all-closed", async () => {
   stopQueueWorker();
   stopTrackingServer();
   
-  // Prevent hang if browser fails to close gracefully
+  // Close both browsers
   try {
     await Promise.race([
-      closeBrowser(),
+      Promise.all([closeBrowser(), closeInboxBrowser()]),
       new Promise((resolve) => setTimeout(resolve, 3000))
     ]);
   } catch (e) {}

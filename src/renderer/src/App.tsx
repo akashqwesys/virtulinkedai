@@ -7,6 +7,18 @@ import ContentCalendar from "./pages/ContentCalendar";
 import Inbox from "./pages/Inbox";
 import Analytics from "./pages/Analytics";
 import EmailTemplates from "./pages/EmailTemplates";
+import {
+  LayoutDashboard,
+  Rocket,
+  Users,
+  MessageSquare,
+  Calendar,
+  LineChart,
+  Mail,
+  Settings as SettingsIcon,
+  Moon,
+  Sun
+} from "lucide-react";
 
 type PageKey =
   | "dashboard"
@@ -21,19 +33,19 @@ type PageKey =
 interface NavItem {
   key: PageKey;
   label: string;
-  icon: string;
+  icon: React.ReactNode;
   section?: string;
 }
 
 const navItems: NavItem[] = [
-  { key: "dashboard", label: "Dashboard", icon: "📊", section: "Overview" },
-  { key: "campaigns", label: "Campaigns", icon: "🚀", section: "Automation" },
-  { key: "leads", label: "Lead Pipeline", icon: "👥" },
-  { key: "inbox", label: "Inbox", icon: "💬" },
-  { key: "content", label: "Content Calendar", icon: "📅", section: "Content" },
-  { key: "analytics", label: "Analytics", icon: "📈" },
-  { key: "templates", label: "Email Templates", icon: "📧", section: "Tools" },
-  { key: "settings", label: "Settings", icon: "⚙️", section: "System" },
+  { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, section: "Overview" },
+  { key: "campaigns", label: "Campaigns", icon: <Rocket size={18} />, section: "Automation" },
+  { key: "leads", label: "Lead Pipeline", icon: <Users size={18} /> },
+  { key: "inbox", label: "Inbox", icon: <MessageSquare size={18} /> },
+  { key: "content", label: "Content Calendar", icon: <Calendar size={18} />, section: "Content" },
+  { key: "analytics", label: "Analytics", icon: <LineChart size={18} /> },
+  { key: "templates", label: "Email Templates", icon: <Mail size={18} />, section: "Tools" },
+  { key: "settings", label: "Settings", icon: <SettingsIcon size={18} />, section: "System" },
 ];
 
 export default function App() {
@@ -169,7 +181,7 @@ export default function App() {
             }}
             onClick={toggleTheme}
           >
-            <span>{theme === "light" ? "🌙" : "☀️"}</span>
+            <span style={{ display: "flex", alignItems: "center" }}>{theme === "light" ? <Moon size={16} /> : <Sun size={16} />}</span>
             <span>{theme === "light" ? "Dark Mode" : "Light Mode"}</span>
           </button>
         </div>

@@ -1,4 +1,9 @@
 import { useState, useEffect } from "react";
+import { 
+  FileText, Clock, CheckCircle2, XCircle, Ban, Flame, 
+  RefreshCw, Plus, Calendar, Zap, ThumbsUp, MessageSquare, 
+  PenTool, Send 
+} from "lucide-react";
 
 interface ScheduledPostItem {
   id: string;
@@ -137,12 +142,12 @@ export default function ContentCalendar() {
     cancelled: "badge-neutral",
   };
 
-  const statusIcons: Record<string, string> = {
-    draft: "📝",
-    scheduled: "⏰",
-    published: "✅",
-    failed: "❌",
-    cancelled: "🚫",
+  const statusIcons: Record<string, React.ReactNode> = {
+    draft: <FileText size={14}/>,
+    scheduled: <Clock size={14}/>,
+    published: <CheckCircle2 size={14}/>,
+    failed: <XCircle size={14}/>,
+    cancelled: <Ban size={14}/>,
   };
 
   return (
@@ -158,13 +163,13 @@ export default function ContentCalendar() {
             onClick={runEngagement}
             disabled={engagementRunning}
           >
-            {engagementRunning ? "⏳ Running..." : "🔥 Run Engagement Session"}
+            {engagementRunning ? <><RefreshCw size={14} className="animate-spin mr-1"/> Running...</> : <><Flame size={14} className="mr-1"/> Run Engagement Session</>}
           </button>
           <button
             className="btn btn-primary"
             onClick={() => setShowComposer(true)}
           >
-            ➕ New Post
+            <Plus size={14} className="mr-1"/> New Post
           </button>
         </div>
       </div>
@@ -181,7 +186,7 @@ export default function ContentCalendar() {
             }}
           >
             <div className="card-header">
-              <h3 className="card-title">🔥 Engagement Session Results</h3>
+              <h3 className="card-title" style={{display: "flex", alignItems: "center", gap: "8px"}}><Flame size={18}/> Engagement Session Results</h3>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={() => setEngagementResults(null)}
@@ -235,12 +240,12 @@ export default function ContentCalendar() {
           <div>
             <div className="card" style={{ marginBottom: "24px" }}>
               <div className="card-header">
-                <h3 className="card-title">📅 Scheduled Posts</h3>
+                <h3 className="card-title" style={{display: "flex", alignItems: "center", gap: "8px"}}><Calendar size={18}/> Scheduled Posts</h3>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={loadPosts}
                 >
-                  🔄 Refresh
+                  <RefreshCw size={14} className="mr-1"/> Refresh
                 </button>
               </div>
 
@@ -252,8 +257,8 @@ export default function ContentCalendar() {
                     color: "var(--text-muted)",
                   }}
                 >
-                  <div style={{ fontSize: "40px", marginBottom: "12px" }}>
-                    📝
+                  <div style={{ marginBottom: "16px", color: "var(--accent-primary)", opacity: 0.8, display: "flex", justifyContent: "center" }}>
+                    <FileText size={40}/>
                   </div>
                   <p>No posts scheduled. Create your first post above!</p>
                 </div>
@@ -270,7 +275,7 @@ export default function ContentCalendar() {
                       className="flex items-center gap-3"
                       style={{ marginBottom: "8px" }}
                     >
-                      <span className={`badge ${statusBadge[post.status]}`}>
+                      <span className={`badge ${statusBadge[post.status]}`} style={{display: "flex", alignItems: "center", gap: "4px"}}>
                         {statusIcons[post.status]} {post.status}
                       </span>
                       <span className="text-sm text-muted">
@@ -311,7 +316,7 @@ export default function ContentCalendar() {
                         className="btn btn-secondary btn-sm"
                         onClick={() => handleCancelPost(post.id)}
                       >
-                        🚫 Cancel
+                        <Ban size={14} className="mr-1"/> Cancel
                       </button>
                     )}
                   </div>
@@ -322,7 +327,7 @@ export default function ContentCalendar() {
             {/* Engagement Tools */}
             <div className="card">
               <div className="card-header">
-                <h3 className="card-title">⚡ Engagement Automation</h3>
+                <h3 className="card-title" style={{display: "flex", alignItems: "center", gap: "8px"}}><Zap size={18}/> Engagement Automation</h3>
               </div>
               <div className="flex gap-3" style={{ flexWrap: "wrap" }}>
                 <button
@@ -330,14 +335,14 @@ export default function ContentCalendar() {
                   onClick={runEngagement}
                   disabled={engagementRunning}
                 >
-                  👍 Auto-Like & Comment Feed
+                  <ThumbsUp size={14} className="mr-1"/> Auto-Like & Comment Feed
                 </button>
                 <button
                   className="btn btn-secondary"
                   onClick={replyToComments}
                   disabled={engagementRunning}
                 >
-                  💬 Reply to My Post Comments
+                  <MessageSquare size={14} className="mr-1"/> Reply to My Post Comments
                 </button>
               </div>
               <p className="text-sm text-muted" style={{ marginTop: "12px" }}>
@@ -350,8 +355,8 @@ export default function ContentCalendar() {
           {/* Sidebar — Optimal Times */}
           <div>
             <div className="card">
-              <h3 className="card-title" style={{ marginBottom: "16px" }}>
-                🕐 Best Posting Times
+              <h3 className="card-title" style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Clock size={18}/> Best Posting Times
               </h3>
               {optimalTimes.map((slot) => (
                 <div key={slot.day} style={{ marginBottom: "16px" }}>
@@ -409,9 +414,10 @@ export default function ContentCalendar() {
                   fontSize: "1.25rem",
                   fontWeight: 700,
                   marginBottom: "24px",
+                  display: "flex", alignItems: "center", gap: "8px"
                 }}
               >
-                ✍️ Create Post
+                <PenTool size={20}/> Create Post
               </h2>
 
               <div className="input-group">
@@ -495,7 +501,7 @@ export default function ContentCalendar() {
                   onClick={handlePublishNow}
                   disabled={scheduling || !draft.content.trim()}
                 >
-                  {scheduling ? "⏳..." : "🚀 Publish Now"}
+                  {scheduling ? <><RefreshCw size={14} className="animate-spin mr-1"/>...</> : <><Send size={14} className="mr-1"/> Publish Now</>}
                 </button>
                 <button
                   className="btn btn-primary"
@@ -504,7 +510,7 @@ export default function ContentCalendar() {
                     scheduling || !draft.content.trim() || !draft.scheduledAt
                   }
                 >
-                  {scheduling ? "⏳ Scheduling..." : "📅 Schedule"}
+                  {scheduling ? <><RefreshCw size={14} className="animate-spin mr-1"/> Scheduling...</> : <><Calendar size={14} className="mr-1"/> Schedule</>}
                 </button>
               </div>
             </div>

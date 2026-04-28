@@ -1,4 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { 
+  Rocket, Plus, Trash2, Play, Pause, Zap, BarChart2, LineChart, 
+  Search, Eye, UserPlus, MessageSquare, Mail, AlertTriangle, 
+  Download, Bot, User, CheckCircle2, XCircle
+} from "lucide-react";
 
 interface CampaignStep {
   id: string;
@@ -356,11 +361,11 @@ export default function Campaigns() {
   };
 
   const stepIcons = {
-    extract: "🔍",
-    visit: "👀",
-    connect: "🤝",
-    message: "💬",
-    email: "✉️",
+    extract: <Search size={16} />,
+    visit: <Eye size={16} />,
+    connect: <UserPlus size={16} />,
+    message: <MessageSquare size={16} />,
+    email: <Mail size={16} />,
   };
 
   // --- RENDERING VIEWS ---
@@ -379,13 +384,13 @@ export default function Campaigns() {
             className="btn btn-primary"
             onClick={() => { setShowCreateModal(true); setCreateError(null); }}
           >
-            ➕ New Campaign
+            <Plus size={16} /> New Campaign
           </button>
         </div>
 
         {campaigns.length === 0 ? (
           <div className="card text-center" style={{ padding: "80px 20px" }}>
-            <div style={{ fontSize: "48px", marginBottom: "16px" }}>🚀</div>
+            <div style={{ marginBottom: "16px", color: "var(--accent-primary)", display: "flex", justifyContent: "center" }}><Rocket size={48} /></div>
             <h3 className="text-xl font-bold mb-2">Ready to automate?</h3>
             <p className="text-muted mb-6">
               Create your first LinkedHelper-style workflow.
@@ -406,7 +411,6 @@ export default function Campaigns() {
                 style={{
                   cursor: "pointer",
                   transition: "transform 0.2s",
-                  borderTop: "4px solid var(--accent-main)",
                 }}
                 onClick={() => {
                   setSelectedCampaignId(campaign.id);
@@ -426,10 +430,10 @@ export default function Campaigns() {
                   </span>
                   <button 
                     className="btn btn-secondary btn-sm"
-                    style={{ marginLeft: "8px", background: "rgba(220, 38, 38, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(220, 38, 38, 0.2)" }}
+                    style={{ marginLeft: "8px", background: "rgba(239, 68, 68, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(239, 68, 68, 0.2)" }}
                     onClick={(e) => { e.stopPropagation(); handleDeleteCampaign(campaign.id); }}
                   >
-                    🗑️
+                    <Trash2 size={14} />
                   </button>
                 </div>
                 <p className="text-sm text-muted mb-4 line-clamp-2">
@@ -515,13 +519,16 @@ export default function Campaigns() {
                 <div style={{
                   marginBottom: "12px",
                   padding: "10px 14px",
-                  background: "rgba(220, 38, 38, 0.08)",
-                  border: "1px solid rgba(220, 38, 38, 0.25)",
+                  background: "rgba(239, 68, 68, 0.08)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
                   borderRadius: "8px",
                   color: "var(--accent-danger)",
                   fontSize: "13px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px"
                 }}>
-                  ⚠️ {createError}
+                  <AlertTriangle size={14} /> {createError}
                 </div>
               )}
               <div className="flex justify-end gap-3">
@@ -555,7 +562,7 @@ export default function Campaigns() {
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        backgroundColor: "var(--bg-main)",
+        backgroundColor: "var(--bg-primary)",
       }}
     >
       {/* Detail Header */}
@@ -592,25 +599,23 @@ export default function Campaigns() {
               }}
             >
               {selectedCampaign.status === "active"
-                ? "⏸ Pause Campaign"
-                : "▶️ Start Campaign"}
+                ? <><Pause size={14} /> Pause Campaign</>
+                : <><Play size={14} /> Start Campaign</>}
             </button>
             <button
-               className="btn btn-secondary"
-               style={{ background: "rgba(220, 38, 38, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(220, 38, 38, 0.2)" }}
+               className="btn btn-danger"
                onClick={() => handleDeleteCampaign(selectedCampaign.id)}
             >
-               🗑️ Delete
+               <Trash2 size={14} className="mr-1"/> Delete
             </button>
           </div>
         </div>
 
-        {/* Tabs */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "-1px" }}>
           {([
-            { key: "workflow", label: "Workflow", icon: "⚡" },
-            { key: "pipeline", label: "Pipeline", icon: "📊" },
-            { key: "analytics", label: "Analytics", icon: "📈" },
+            { key: "workflow", label: "Workflow", icon: <Zap size={14} /> },
+            { key: "pipeline", label: "Pipeline", icon: <BarChart2 size={14} /> },
+            { key: "analytics", label: "Analytics", icon: <LineChart size={14} /> },
           ] as const).map((tab) => (
             <button
               key={tab.key}
@@ -686,7 +691,7 @@ export default function Campaigns() {
                           borderRadius: "50%",
                           background:
                             selectedStepId === step.id
-                              ? "var(--accent-main)"
+                              ? "var(--accent-primary)"
                               : "var(--bg-card)",
                           border:
                             selectedStepId === step.id
@@ -723,11 +728,11 @@ export default function Campaigns() {
                         cursor: "pointer",
                         border:
                           selectedStepId === step.id
-                            ? "2px solid var(--accent-main)"
+                            ? "2px solid var(--accent-primary)"
                             : "1px solid var(--border-subtle)",
                         boxShadow:
                           selectedStepId === step.id
-                            ? "0 4px 12px rgba(79, 70, 229, 0.1)"
+                            ? "0 4px 12px var(--accent-primary-glow)"
                             : "none",
                       }}
                       onClick={() => setSelectedStepId(step.id)}
@@ -771,35 +776,35 @@ export default function Campaigns() {
                       style={{ fontSize: "12px", padding: "6px" }}
                       onClick={() => addStep("extract")}
                     >
-                      🔍 Extract
+                      <Search size={14} className="mr-1"/> Extract
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
                       style={{ fontSize: "12px", padding: "6px" }}
                       onClick={() => addStep("visit")}
                     >
-                      👀 Visit
+                      <Eye size={14} className="mr-1"/> Visit
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
                       style={{ fontSize: "12px", padding: "6px" }}
                       onClick={() => addStep("connect")}
                     >
-                      🤝 Connect
+                      <UserPlus size={14} className="mr-1"/> Connect
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
                       style={{ fontSize: "12px", padding: "6px" }}
                       onClick={() => addStep("message")}
                     >
-                      💬 Message
+                      <MessageSquare size={14} className="mr-1"/> Message
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
                       style={{ fontSize: "12px", padding: "6px" }}
                       onClick={() => addStep("email")}
                     >
-                      ✉️ Email
+                      <Mail size={14} className="mr-1"/> Email
                     </button>
                   </div>
                 </div>
@@ -936,56 +941,59 @@ export default function Campaigns() {
               );
               
               const statusColors = {
-                queue: "border-gray-500 text-gray-400",
-                connecting: "border-blue-500 text-blue-400",
-                connected: "border-purple-500 text-purple-400",
-                engaged: "border-orange-500 text-orange-400",
-                meeting: "border-emerald-500 text-emerald-400",
+                queue: "border-gray-500",
+                connecting: "border-blue-500",
+                connected: "border-purple-500",
+                engaged: "border-orange-500",
+                meeting: "border-emerald-500",
               };
 
               return (
                 <div
                   key={col.id}
                   style={{
-                    width: "280px",
-                    minWidth: "280px",
+                    width: "240px",
+                    minWidth: "240px",
                     display: "flex",
                     flexDirection: "column",
-                    background: "var(--bg-tertiary)",
-                    borderRadius: "10px",
+                    background: "rgba(255, 255, 255, 0.02)",
+                    borderRadius: "12px",
                     padding: "12px",
-                    border: "1px solid var(--border-subtle)"
+                    border: "1px solid var(--border-subtle)",
+                    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.05)"
                   }}
                 >
                   <div className="flex justify-between items-center mb-4 px-1 gap-2">
-                    <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-                      {col.name}
-                    </h3>
                     <div className="flex items-center gap-2">
-                      {col.id !== "meeting" && (
-                        <button
-                          onClick={() => handlePrioritize(col.id)}
-                          style={{
-                            padding: "2px 8px",
-                            fontSize: "10px",
-                            fontWeight: "bold",
-                            border: "1px solid",
-                            borderRadius: "12px",
-                            cursor: "pointer",
-                            transition: "all 0.2s",
-                            backgroundColor: prioritizedSection === col.id ? "var(--accent-primary)" : "transparent",
-                            color: prioritizedSection === col.id ? "#fff" : "var(--text-muted)",
-                            borderColor: prioritizedSection === col.id ? "var(--accent-primary)" : "var(--border-subtle)"
-                          }}
-                          title={prioritizedSection === col.id ? "Disable Priority" : "Prioritize this section"}
-                        >
-                          {prioritizedSection === col.id ? "★ PRIORITIZED" : "☆ Prioritize"}
-                        </button>
-                      )}
-                      <span className="bg-white/50 px-2 text-[10px] font-bold rounded-full py-0.5 text-muted border border-border-subtle">
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: col.id === 'queue' ? 'var(--text-muted)' : col.id === 'meeting' ? 'var(--accent-success)' : 'var(--accent-primary)' }}></div>
+                      <h3 className="font-bold text-sm" style={{ color: "var(--text-main)", letterSpacing: "0.2px" }}>
+                        {col.name}
+                      </h3>
+                      <span className="bg-white/10 px-1.5 text-[10px] font-bold rounded-full py-0 text-muted border border-white/5">
                         {colLeads.length}
                       </span>
                     </div>
+                    {col.id !== "meeting" && (
+                      <button
+                        onClick={() => handlePrioritize(col.id)}
+                        style={{
+                          padding: "3px 8px",
+                          fontSize: "10px",
+                          fontWeight: "600",
+                          borderRadius: "12px",
+                          cursor: "pointer",
+                          transition: "all 0.2s",
+                          backgroundColor: prioritizedSection === col.id ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                          color: prioritizedSection === col.id ? "var(--accent-primary)" : "var(--text-muted)",
+                          border: `1px solid ${prioritizedSection === col.id ? "var(--accent-primary)" : "transparent"}`,
+                        }}
+                        onMouseOver={(e) => { if (prioritizedSection !== col.id) e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                        onMouseOut={(e) => { if (prioritizedSection !== col.id) e.currentTarget.style.background = "transparent"; }}
+                        title={prioritizedSection === col.id ? "Disable Priority" : "Prioritize this section"}
+                      >
+                        {prioritizedSection === col.id ? "★ Prioritized" : "☆ Prioritize"}
+                      </button>
+                    )}
                   </div>
 
                   <div
@@ -994,46 +1002,69 @@ export default function Campaigns() {
                       overflowY: "auto",
                       display: "flex",
                       flexDirection: "column",
-                      gap: "10px",
+                      gap: "8px",
+                      paddingRight: "4px"
                     }}
                   >
                     {colLeads.map((lead) => (
                       <div
                         key={lead.id}
-                        className={`card ${statusColors[col.id as keyof typeof statusColors]}`}
+                        className={`card hover-lift ${statusColors[col.id as keyof typeof statusColors]}`}
                         style={{ 
-                          padding: "10px", 
+                          padding: "12px", 
                           cursor: "pointer", 
-                          background: "var(--bg-secondary)",
-                          borderLeftWidth: "4px",
-                          boxShadow: "var(--shadow-sm)"
+                          borderLeftWidth: "3px",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                          background: "var(--bg-card)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "6px",
+                          transition: "transform 0.2s, box-shadow 0.2s"
                         }}
+                        onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
+                        onMouseOut={(e) => e.currentTarget.style.transform = "none"}
                         onClick={() => setSelectedLead(lead)}
                       >
-                        <div className="font-bold text-sm" style={{ lineHeight: "1.4" }}>{lead.name}</div>
+                        <div className="font-bold" style={{ color: "var(--text-main)", fontSize: "13px", lineHeight: "1.2", wordBreak: "break-word" }}>
+                          {lead.name}
+                        </div>
                         <div
-                          className="text-xs"
-                          style={{ opacity: 0.7, marginTop: "2px", lineHeight: "1.3" }}
+                          className="text-muted"
+                          style={{ fontSize: "11px", lineHeight: "1.3" }}
                         >
                           {lead.title}
                         </div>
                         <div
-                          className="text-xs font-semibold"
-                          style={{ marginTop: "2px", opacity: 0.8 }}
+                          style={{ color: "var(--text-secondary)", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}
                         >
-                          📍 {lead.company}
+                          <span style={{ opacity: 0.6, fontSize: "12px" }}>🏢</span> 
+                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.company}</span>
                         </div>
-                        <div className="text-xs mt-2 text-right uppercase opacity-50 font-bold tracking-tight" style={{ fontSize: "10px" }}>
-                          {lead.status.replace(/_/g, " ")}
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2px" }}>
+                          <span 
+                            style={{ 
+                              fontSize: "9px",
+                              fontWeight: "bold",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.5px",
+                              padding: "3px 6px",
+                              borderRadius: "6px",
+                              background: "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.1)",
+                              color: "var(--text-muted)"
+                            }}
+                          >
+                            {lead.status.replace(/_/g, " ")}
+                          </span>
                         </div>
                       </div>
                     ))}
                     {colLeads.length === 0 && (
                       <div
-                        className="text-center text-xs py-10 rounded-lg text-muted"
-                        style={{ border: "1px dashed var(--border-primary)", background: "rgba(0,0,0,0.02)" }}
+                        className="text-center text-sm py-12 rounded-xl text-muted font-medium"
+                        style={{ border: "1px dashed var(--border-subtle)", background: "rgba(0,0,0,0.15)" }}
                       >
-                        No leads in {col.id}
+                        No leads in {col.name}
                       </div>
                     )}
                   </div>
@@ -1053,30 +1084,30 @@ export default function Campaigns() {
           
           return (
           <div style={{ padding: "32px" }}>
-            <div className="grid grid-cols-4 gap-6 mb-8">
-              <div className="card border-l-4 border-blue-500">
-                <h4 className="text-sm font-bold uppercase text-muted">
+            <div style={{ display: "flex", gap: "24px", marginBottom: "32px", width: "100%" }}>
+              <div className="card" style={{ flex: 1, borderTop: "4px solid #3b82f6", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)", marginBottom: "8px" }}>
                   Processed
                 </h4>
-                <div className="text-3xl font-bold mt-2">{total}</div>
+                <div className="text-4xl font-bold" style={{ color: "var(--text-main)" }}>{total}</div>
               </div>
-              <div className="card border-l-4 border-purple-500">
-                <h4 className="text-sm font-bold uppercase text-muted">
+              <div className="card" style={{ flex: 1, borderTop: "4px solid #a855f7", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)", marginBottom: "8px" }}>
                   Connection Rate
                 </h4>
-                <div className="text-3xl font-bold mt-2">{total > 0 ? ((connected / total) * 100).toFixed(1) : "0.0"}%</div>
+                <div className="text-4xl font-bold" style={{ color: "var(--text-main)" }}>{total > 0 ? ((connected / total) * 100).toFixed(1) : "0.0"}%</div>
               </div>
-              <div className="card border-l-4 border-orange-500">
-                <h4 className="text-sm font-bold uppercase text-muted">
+              <div className="card" style={{ flex: 1, borderTop: "4px solid #f97316", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)", marginBottom: "8px" }}>
                   Reply Rate
                 </h4>
-                <div className="text-3xl font-bold mt-2">{total > 0 ? ((replied / total) * 100).toFixed(1) : "0.0"}%</div>
+                <div className="text-4xl font-bold" style={{ color: "var(--text-main)" }}>{total > 0 ? ((replied / total) * 100).toFixed(1) : "0.0"}%</div>
               </div>
-              <div className="card border-l-4 border-emerald-500">
-                <h4 className="text-sm font-bold uppercase text-muted">
+              <div className="card" style={{ flex: 1, borderTop: "4px solid #10b981", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)", marginBottom: "8px" }}>
                   Meetings
                 </h4>
-                <div className="text-3xl font-bold mt-2">{meetings}</div>
+                <div className="text-4xl font-bold" style={{ color: "var(--text-main)" }}>{meetings}</div>
               </div>
             </div>
 
@@ -1090,7 +1121,7 @@ export default function Campaigns() {
               }}
             >
               <div className="text-center text-muted">
-                <p className="text-4xl mb-4">📊</p>
+                <BarChart2 size={48} style={{ margin: "0 auto 16px auto", opacity: 0.5 }} />
                 <p className="text-lg font-semibold">
                   Detailed charts will appear here once the campaign runs.
                 </p>
@@ -1127,12 +1158,12 @@ export default function Campaigns() {
           >
             {/* Modal Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-              <h3 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0 }}>📥 Import Leads</h3>
+              <h3 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}><Download size={20} /> Import Leads</h3>
               <button
-                style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "18px", cursor: "pointer" }}
+                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
                 onClick={() => { setShowImportModal(false); setImportResult(null); }}
                 disabled={isImporting}
-              >✕</button>
+              ><XCircle size={20}/></button>
             </div>
 
             {/* Mode Toggle */}
@@ -1145,7 +1176,7 @@ export default function Campaigns() {
                   background: importMode === "profiles" ? "var(--accent-primary)" : "transparent",
                   color: importMode === "profiles" ? "#fff" : "var(--text-muted)",
                 }}
-              >👤 Profile URLs</button>
+              ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><User size={14}/> Profile URLs</span></button>
               <button
                 onClick={() => { setImportMode("page"); setImportResult(null); }}
                 style={{
@@ -1154,7 +1185,7 @@ export default function Campaigns() {
                   background: importMode === "page" ? "var(--accent-primary)" : "transparent",
                   color: importMode === "page" ? "#fff" : "var(--text-muted)",
                 }}
-              >🤖 AI Page Import</button>
+              ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><Bot size={14}/> AI Page Import</span></button>
             </div>
 
             {/* Profile URLs Mode */}
@@ -1180,10 +1211,10 @@ export default function Campaigns() {
               <>
                 <div style={{
                   padding: "12px 14px", marginBottom: "14px", borderRadius: "10px",
-                  background: "rgba(96, 165, 250, 0.07)", border: "1px solid rgba(96, 165, 250, 0.2)",
+                  background: "rgba(99, 102, 241, 0.07)", border: "1px solid rgba(99, 102, 241, 0.2)",
                   fontSize: "0.8125rem", lineHeight: 1.6, color: "var(--text-secondary)",
                 }}>
-                  <strong style={{ color: "var(--accent-primary)" }}>🤖 AI-Powered Bulk Import</strong><br />
+                  <strong style={{ color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "6px" }}><Bot size={16}/> AI-Powered Bulk Import</strong><div style={{marginTop:"4px"}}/>
                   Paste a LinkedIn <strong>search results page</strong>, <strong>company "People" page</strong>, or <strong>alumni page</strong> URL.
                   The AI will automatically:
                   <ul style={{ marginTop: "8px", paddingLeft: "18px", color: "var(--text-muted)", marginBottom: 0 }}>
@@ -1228,11 +1259,11 @@ export default function Campaigns() {
               </button>
               {importMode === "profiles" ? (
                 <button className="btn btn-primary" onClick={handleImportProfiles} disabled={!importUrls.trim() || isImporting} style={{ minWidth: "140px" }}>
-                  {isImporting ? "⏳ Importing..." : "📥 Import Profiles"}
+                  {isImporting ? <><Zap size={14} className="animate-spin"/> Importing...</> : <><Download size={14}/> Import Profiles</>}
                 </button>
               ) : (
                 <button className="btn btn-primary" onClick={handlePageImport} disabled={!importPageUrl.trim() || isImporting} style={{ minWidth: "160px" }}>
-                  {isImporting ? "🤖 AI Scanning..." : "🤖 Import from Page"}
+                  {isImporting ? <><Bot size={14} className="animate-pulse"/> AI Scanning...</> : <><Bot size={14}/> Import from Page</>}
                 </button>
               )}
             </div>
@@ -1266,12 +1297,12 @@ export default function Campaigns() {
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <h3 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0 }}>👤 Lead Summary</h3>
+              <h3 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}><User size={20}/> Lead Summary</h3>
               <button
-                style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "18px", cursor: "pointer" }}
+                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
                 onClick={() => setSelectedLead(null)}
                 disabled={isRemovingLead}
-              >✕</button>
+              ><XCircle size={20}/></button>
             </div>
             
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
@@ -1375,7 +1406,7 @@ export default function Campaigns() {
                 }}
                 disabled={isRemovingLead}
               >
-                {isRemovingLead ? "⏳ Removing..." : "🗑️ Remove from Pipeline"}
+                {isRemovingLead ? <><Zap size={14} className="animate-spin"/> Removing...</> : <><Trash2 size={14}/> Remove from Pipeline</>}
               </button>
               <button className="btn btn-primary" onClick={() => setSelectedLead(null)} disabled={isRemovingLead}>
                 Close

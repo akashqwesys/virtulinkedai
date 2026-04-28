@@ -1,4 +1,8 @@
 import { useState, useEffect } from "react";
+import { 
+  Hand, PartyPopper, Send, Calendar, Pencil, Plus, Mail, 
+  Sparkles, Save, RefreshCw, Trash2 
+} from "lucide-react";
 
 interface EmailTemplate {
   id: string;
@@ -113,13 +117,13 @@ export default function EmailTemplates() {
 
   const typeLabels: Record<
     string,
-    { label: string; icon: string; color: string }
+    { label: string; icon: React.ReactNode; color: string }
   > = {
-    intro: { label: "Introduction", icon: "👋", color: "#6366f1" },
-    welcome: { label: "Welcome", icon: "🎉", color: "#10b981" },
-    follow_up: { label: "Follow-Up", icon: "📩", color: "#f59e0b" },
-    meeting_confirm: { label: "Meeting", icon: "📅", color: "#3b82f6" },
-    custom: { label: "Custom", icon: "✏️", color: "#8b5cf6" },
+    intro: { label: "Introduction", icon: <Hand size={16}/>, color: "#6366f1" },
+    welcome: { label: "Welcome", icon: <PartyPopper size={16}/>, color: "#10b981" },
+    follow_up: { label: "Follow-Up", icon: <Send size={16}/>, color: "#f59e0b" },
+    meeting_confirm: { label: "Meeting", icon: <Calendar size={16}/>, color: "#3b82f6" },
+    custom: { label: "Custom", icon: <Pencil size={16}/>, color: "#8b5cf6" },
   };
 
   return (
@@ -132,7 +136,7 @@ export default function EmailTemplates() {
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => startEdit()}>
-          ➕ New Template
+          <Plus size={16} className="mr-1"/> New Template
         </button>
       </div>
 
@@ -153,8 +157,8 @@ export default function EmailTemplates() {
                 borderBottom: "1px solid var(--border-subtle)",
               }}
             >
-              <h3 className="card-title" style={{ margin: 0 }}>
-                📧 Templates
+              <h3 className="card-title" style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                <Mail size={18}/> Templates
               </h3>
             </div>
             {templates.length === 0 ? (
@@ -192,7 +196,7 @@ export default function EmailTemplates() {
                       className="flex items-center gap-2"
                       style={{ marginBottom: "4px" }}
                     >
-                      <span>{typeInfo.icon}</span>
+                      <span style={{display: "inline-flex", width:"16px", height:"16px", alignItems: "center", justifyContent: "center", color: typeInfo.color}}>{typeInfo.icon}</span>
                       <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
                         {tpl.name}
                       </span>
@@ -236,12 +240,13 @@ export default function EmailTemplates() {
                     fontSize: "1.25rem",
                     fontWeight: 700,
                     marginBottom: "24px",
+                    display: "flex", alignItems: "center", gap: "8px"
                   }}
                 >
                   {draft.id.startsWith("tpl_") &&
                   !templates.find((t) => t.id === draft.id)
-                    ? "✨ New Template"
-                    : "✏️ Edit Template"}
+                    ? <><Sparkles size={20}/> New Template</>
+                    : <><Pencil size={20}/> Edit Template</>}
                 </h2>
 
                 <div className="flex gap-4">
@@ -347,7 +352,7 @@ export default function EmailTemplates() {
                       saving || !draft.name || !draft.subject || !draft.body
                     }
                   >
-                    {saving ? "⏳ Saving..." : "💾 Save Template"}
+                    {saving ? <><RefreshCw size={14} className="animate-spin"/> Saving...</> : <><Save size={14}/> Save Template</>}
                   </button>
                 </div>
               </>
@@ -357,7 +362,7 @@ export default function EmailTemplates() {
                   className="flex items-center gap-3"
                   style={{ marginBottom: "8px" }}
                 >
-                  <span style={{ fontSize: "1.5rem" }}>
+                  <span style={{ fontSize: "1.5rem", display: "inline-flex", color: (typeLabels[selectedTemplate.type] || typeLabels.custom).color }}>
                     {
                       (typeLabels[selectedTemplate.type] || typeLabels.custom)
                         .icon
@@ -370,14 +375,14 @@ export default function EmailTemplates() {
                     className="btn btn-secondary btn-sm"
                     onClick={() => startEdit(selectedTemplate)}
                   >
-                    ✏️ Edit
+                    <Pencil size={14} className="mr-1"/> Edit
                   </button>
                   <button
                     className="btn btn-secondary btn-sm"
                     onClick={() => handleDelete(selectedTemplate.id)}
                     style={{ color: "var(--accent-danger)" }}
                   >
-                    🗑️ Delete
+                    <Trash2 size={14} className="mr-1"/> Delete
                   </button>
                 </div>
 

@@ -66,6 +66,7 @@ function initializeSchema(db: any): void {
         id TEXT PRIMARY KEY,
         linkedin_url TEXT UNIQUE NOT NULL,
         email TEXT DEFAULT '',
+        phone_number TEXT DEFAULT '',
         first_name TEXT DEFAULT '',
         last_name TEXT DEFAULT '',
         headline TEXT DEFAULT '',
@@ -213,6 +214,21 @@ function initializeSchema(db: any): void {
         applied_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       )`,
     },
+    {
+      name: "inbox_contacts",
+      sql: `CREATE TABLE IF NOT EXISTS inbox_contacts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        headline TEXT DEFAULT '',
+        avatar_url TEXT DEFAULT '',
+        thread_url TEXT NOT NULL,
+        last_message TEXT DEFAULT '',
+        last_message_at TEXT DEFAULT '',
+        unread_count INTEGER DEFAULT 0,
+        lead_id TEXT DEFAULT NULL,
+        synced_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      )`,
+    },
   ];
 
   // Execute table creations individually for reliability
@@ -223,8 +239,10 @@ function initializeSchema(db: any): void {
   // 2. Migration: Ensure important columns exist (auto-healing for existing DBs)
   ensureColumnExists(db, "leads", "status", "TEXT DEFAULT 'new'");
   ensureColumnExists(db, "leads", "email", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "leads", "phone_number", "TEXT DEFAULT ''");
   ensureColumnExists(db, "leads", "interaction_count", "INTEGER DEFAULT 0");
   ensureColumnExists(db, "leads", "chatbot_state", "TEXT DEFAULT 'idle'");
+  ensureColumnExists(db, "leads", "thread_url", "TEXT DEFAULT ''");
   ensureColumnExists(db, "campaigns", "status", "TEXT DEFAULT 'draft'");
   ensureColumnExists(db, "scheduled_posts", "status", "TEXT DEFAULT 'draft'");
   ensureColumnExists(
@@ -248,6 +266,7 @@ function initializeSchema(db: any): void {
     "CREATE INDEX IF NOT EXISTS idx_connection_checks_lead ON connection_checks(lead_id)",
     "CREATE INDEX IF NOT EXISTS idx_job_queue_status ON job_queue(status, run_at)",
     "CREATE INDEX IF NOT EXISTS idx_job_queue_type ON job_queue(type, status)",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_contacts_thread ON inbox_contacts(thread_url)",
   ];
 
   for (const idx of indexes) {
@@ -603,6 +622,7 @@ export function upsertLeadProfile(profile: {
   scrapedAt: string;
   rawData: Record<string, unknown>;
   email?: string; // Optional — from Contact Info scrape or enrichment
+  phone?: string; // Optional — extracted from Contact Info modal
 }, existingLeadId?: string): string {
   const db = getDatabase();
 
@@ -618,13 +638,13 @@ export function upsertLeadProfile(profile: {
 
   db.prepare(`
     INSERT INTO leads (
-      id, linkedin_url, email, first_name, last_name, headline, company, role,
+      id, linkedin_url, email, phone_number, first_name, last_name, headline, company, role,
       location, about, experience_json, education_json, skills_json,
       recent_posts_json, mutual_connections_json, profile_image_url,
       connection_degree, is_sales_navigator, status, scraped_at,
       raw_data_json, updated_at
     ) VALUES (
-      @id, @linkedinUrl, @email, @firstName, @lastName, @headline, @company, @role,
+      @id, @linkedinUrl, @email, @phoneNumber, @firstName, @lastName, @headline, @company, @role,
       @location, @about, @experience, @education, @skills,
       @recentPosts, @mutualConnections, @profileImageUrl,
       @connectionDegree, @isSalesNavigator, @status, @scrapedAt,
@@ -648,6 +668,7 @@ export function upsertLeadProfile(profile: {
       is_sales_navigator = excluded.is_sales_navigator,
       -- Only update email if a new non-empty one is provided
       email = CASE WHEN excluded.email != '' THEN excluded.email ELSE leads.email END,
+      phone_number = CASE WHEN excluded.phone_number != '' THEN excluded.phone_number ELSE leads.phone_number END,
       status = CASE WHEN leads.status = 'new' THEN 'profile_scraped' ELSE leads.status END,
       scraped_at = excluded.scraped_at,
       raw_data_json = excluded.raw_data_json,
@@ -658,6 +679,7 @@ export function upsertLeadProfile(profile: {
     id:               safeStr(leadId, profile.id),
     linkedinUrl:      safeStr(profile.linkedinUrl),
     email:            safeStr(profile.email),
+    phoneNumber:      safeStr(profile.phone),
     firstName:        safeStr(profile.firstName),
     lastName:         safeStr(profile.lastName),
     headline:         safeStr(profile.headline),

@@ -14,6 +14,7 @@ export interface LinkedInProfile {
   location: string;
   about: string;
   email?: string;
+  phone?: string;
   experience: Experience[];
   education: Education[];
   skills: string[];
@@ -375,8 +376,20 @@ export const IPC_CHANNELS = {
   ACTIVITY_LOG: "activity:log",
   ACTIVITY_LIST: "activity:list",
 
+  // Inbox
+  INBOX_GET_LEADS: "inbox:get-leads",
+  INBOX_GET_MESSAGES: "inbox:get-messages",
+  INBOX_SYNC_THREAD: "inbox:sync-thread",
+  INBOX_SEND_MANUAL: "inbox:send-manual",
+  INBOX_SEND_WELCOME: "inbox:send-welcome",
+  INBOX_SCHEDULE_MEETING: "inbox:schedule-meeting",
+  INBOX_POLL_UNREAD: "inbox:poll-unread",
+  INBOX_BROWSER_STATUS: "inbox:browser-status",
+  INBOX_NEW_MESSAGE: "inbox:new-message",
+
   // General
   APP_READY: "app:ready",
   NOTIFICATION: "notification",
   SYSTEM_WIPE_DATA: "system:wipe-data",
+  SYSTEM_GET_DB_PATH: "system:get-db-path",
 } as const;

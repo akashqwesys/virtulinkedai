@@ -1,4 +1,9 @@
 import { useState, useEffect } from "react";
+import { 
+  RefreshCw, BarChart2, CheckCircle2, AlertTriangle, Clock, 
+  LineChart, List, Trophy, Globe, Briefcase, Bot, Mail, Rocket, 
+  Calendar, Zap, Settings as SettingsIcon, Monitor, Activity, Hash
+} from "lucide-react";
 
 interface ActivityEntry {
   id: string;
@@ -80,16 +85,16 @@ export default function Analytics() {
     "system",
   ];
 
-  const moduleIcons: Record<string, string> = {
-    browser: "🌐",
-    linkedin: "💼",
-    ai: "🤖",
-    microsoft: "📧",
-    campaign: "🚀",
-    content: "📅",
-    engagement: "⚡",
-    settings: "⚙️",
-    system: "🖥️",
+  const moduleIcons: Record<string, React.ReactNode> = {
+    browser: <Globe size={18}/>,
+    linkedin: <Briefcase size={18}/>,
+    ai: <Bot size={18}/>,
+    microsoft: <Mail size={18}/>,
+    campaign: <Rocket size={18}/>,
+    content: <Calendar size={18}/>,
+    engagement: <Zap size={18}/>,
+    settings: <SettingsIcon size={18}/>,
+    system: <Monitor size={18}/>,
   };
 
   function formatAction(action: string): string {
@@ -111,7 +116,7 @@ export default function Analytics() {
           </p>
         </div>
         <button className="btn btn-secondary" onClick={loadActivities}>
-          🔄 Refresh
+          <RefreshCw size={14} className="mr-1"/> Refresh
         </button>
       </div>
 
@@ -124,9 +129,10 @@ export default function Analytics() {
               style={{
                 background: "rgba(99, 102, 241, 0.15)",
                 color: "#6366f1",
+                display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >
-              📊
+              <BarChart2 size={24}/>
             </div>
             <div className="stat-label">Total Actions</div>
             <div
@@ -146,9 +152,10 @@ export default function Analytics() {
               style={{
                 background: "rgba(16, 185, 129, 0.15)",
                 color: "#10b981",
+                display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >
-              ✅
+              <CheckCircle2 size={24}/>
             </div>
             <div className="stat-label">Success Rate</div>
             <div
@@ -173,9 +180,10 @@ export default function Analytics() {
               style={{
                 background: "rgba(239, 68, 68, 0.15)",
                 color: "#ef4444",
+                display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >
-              ⚠️
+              <AlertTriangle size={24}/>
             </div>
             <div className="stat-label">Errors</div>
             <div
@@ -195,9 +203,10 @@ export default function Analytics() {
               style={{
                 background: "rgba(59, 130, 246, 0.15)",
                 color: "#3b82f6",
+                display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >
-              ⏱️
+              <Clock size={24}/>
             </div>
             <div className="stat-label">Active Modules</div>
             <div
@@ -223,8 +232,8 @@ export default function Analytics() {
           <div>
             {/* Activity Heatmap */}
             <div className="card" style={{ marginBottom: "24px" }}>
-              <h3 className="card-title" style={{ marginBottom: "16px" }}>
-                📈 Activity by Hour
+              <h3 className="card-title" style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <LineChart size={18}/> Activity by Hour
               </h3>
               <div className="flex items-end gap-1" style={{ height: "100px" }}>
                 {hourlyDistribution.map((count, hour) => (
@@ -275,7 +284,9 @@ export default function Analytics() {
                   className={`btn btn-sm ${filter === m ? "btn-primary" : "btn-secondary"}`}
                   onClick={() => setFilter(m)}
                 >
-                  {m === "all" ? "📋 All" : `${moduleIcons[m] || "📌"} ${m}`}
+                  <div style={{display: "flex", alignItems: "center", gap: "6px"}}>
+                    {m === "all" ? <><List size={14}/> All</> : <><span style={{display: "inline-flex", width:"14px", height:"14px"}}>{moduleIcons[m] || <Hash size={14}/>}</span> {m}</>}
+                  </div>
                 </button>
               ))}
             </div>
@@ -283,7 +294,7 @@ export default function Analytics() {
             {/* Activity Feed */}
             <div className="card">
               <div className="card-header">
-                <h3 className="card-title">📋 Activity Log</h3>
+                <h3 className="card-title" style={{display: "flex", alignItems: "center", gap: "8px"}}><Activity size={18}/> Activity Log</h3>
                 <span className="text-sm text-muted">
                   {activities.length} events
                 </span>
@@ -319,8 +330,8 @@ export default function Analytics() {
                             : "none",
                       }}
                     >
-                      <span style={{ fontSize: "18px" }}>
-                        {moduleIcons[act.module] || "📌"}
+                      <span style={{ fontSize: "18px", display: "flex", alignItems:"center", justifyContent: "center", width: "24px", height: "24px" }}>
+                        {moduleIcons[act.module] || <Hash size={18}/>}
                       </span>
                       <div style={{ flex: 1 }}>
                         <div className="text-sm" style={{ fontWeight: 500 }}>
@@ -346,8 +357,8 @@ export default function Analytics() {
           {/* Sidebar — Top Actions & Module Breakdown */}
           <div>
             <div className="card" style={{ marginBottom: "24px" }}>
-              <h3 className="card-title" style={{ marginBottom: "16px" }}>
-                🏆 Module Activity
+              <h3 className="card-title" style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Trophy size={18}/> Module Activity
               </h3>
               {Object.entries(stats.byModule)
                 .sort((a, b) => b[1] - a[1])
@@ -357,8 +368,8 @@ export default function Analytics() {
                     className="flex items-center gap-3"
                     style={{ marginBottom: "12px" }}
                   >
-                    <span style={{ fontSize: "16px" }}>
-                      {moduleIcons[module] || "📌"}
+                    <span style={{ fontSize: "16px", display: "inline-flex" }}>
+                      {moduleIcons[module] || <Hash size={16}/>}
                     </span>
                     <span
                       style={{
@@ -376,8 +387,8 @@ export default function Analytics() {
             </div>
 
             <div className="card">
-              <h3 className="card-title" style={{ marginBottom: "16px" }}>
-                📌 Top Actions
+              <h3 className="card-title" style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Hash size={18}/> Top Actions
               </h3>
               {Object.entries(stats.byAction)
                 .sort((a, b) => b[1] - a[1])

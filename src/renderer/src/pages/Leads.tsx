@@ -1,4 +1,23 @@
 import { useState, useEffect } from "react";
+import {
+  Sparkles,
+  Hourglass,
+  ClipboardList,
+  Send,
+  CheckCircle2,
+  Hand,
+  MessageCircle,
+  Handshake,
+  Forward,
+  Mail,
+  CalendarDays,
+  Target,
+  XCircle,
+  Inbox,
+  Search,
+  Trash2,
+  Users
+} from "lucide-react";
 
 const modalStyles = `
   @keyframes modalFadeIn {
@@ -40,26 +59,31 @@ interface LeadItem {
   about?: string;
   experience?: any[];
   connectionDegree?: string;
+  campaignId?: string;
+  campaignName?: string;
+  email?: string;
+  phone?: string;
+  rawData?: any;
 }
 
 const statusLabels: Record<
   LeadStatus,
-  { label: string; badge: string; icon: string }
+  { label: string; badge: string; icon: React.ReactNode }
 > = {
-  new:                  { label: "New",           badge: "badge-neutral",  icon: "🆕" },
-  queued:               { label: "Queued",         badge: "badge-neutral",  icon: "⏳" },
-  profile_scraped:      { label: "Scraped",        badge: "badge-info",     icon: "📋" },
-  connection_requested: { label: "Requested",      badge: "badge-warning",  icon: "📤" },
-  connection_accepted:  { label: "Connected",      badge: "badge-success",  icon: "✅" },
-  welcome_sent:         { label: "Welcome Sent",   badge: "badge-info",     icon: "👋" },
-  in_conversation:      { label: "Chatting",       badge: "badge-info",     icon: "💬" },
-  handed_off:           { label: "Handed Off",     badge: "badge-warning",  icon: "🤝" },
-  follow_up_sent:       { label: "Follow-Up Sent", badge: "badge-info",     icon: "📨" },
-  email_sent:           { label: "Email Sent",     badge: "badge-info",     icon: "📧" },
-  replied:              { label: "Replied",        badge: "badge-success",  icon: "💬" },
-  meeting_booked:       { label: "Meeting",        badge: "badge-success",  icon: "📅" },
-  converted:            { label: "Converted",      badge: "badge-success",  icon: "🎯" },
-  rejected:             { label: "Rejected",       badge: "badge-danger",   icon: "❌" },
+  new:                  { label: "New",           badge: "badge-neutral",  icon: <Sparkles size={14} /> },
+  queued:               { label: "Queued",         badge: "badge-neutral",  icon: <Hourglass size={14} /> },
+  profile_scraped:      { label: "Scraped",        badge: "badge-info",     icon: <ClipboardList size={14} /> },
+  connection_requested: { label: "Requested",      badge: "badge-warning",  icon: <Send size={14} /> },
+  connection_accepted:  { label: "Connected",      badge: "badge-success",  icon: <CheckCircle2 size={14} /> },
+  welcome_sent:         { label: "Welcome Sent",   badge: "badge-info",     icon: <Hand size={14} /> },
+  in_conversation:      { label: "Chatting",       badge: "badge-info",     icon: <MessageCircle size={14} /> },
+  handed_off:           { label: "Handed Off",     badge: "badge-warning",  icon: <Handshake size={14} /> },
+  follow_up_sent:       { label: "Follow-Up Sent", badge: "badge-info",     icon: <Forward size={14} /> },
+  email_sent:           { label: "Email Sent",     badge: "badge-info",     icon: <Mail size={14} /> },
+  replied:              { label: "Replied",        badge: "badge-success",  icon: <MessageCircle size={14} /> },
+  meeting_booked:       { label: "Meeting",        badge: "badge-success",  icon: <CalendarDays size={14} /> },
+  converted:            { label: "Converted",      badge: "badge-success",  icon: <Target size={14} /> },
+  rejected:             { label: "Rejected",       badge: "badge-danger",   icon: <XCircle size={14} /> },
 };
 
 const FILTER_TABS: Array<LeadStatus | "all"> = [
@@ -76,7 +100,6 @@ const FILTER_TABS: Array<LeadStatus | "all"> = [
 export default function Leads() {
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [filter, setFilter] = useState<"all" | LeadStatus>("all");
-  const [selectedLead, setSelectedLead] = useState<LeadItem | null>(null);
 
   // Inject animation styles
   useEffect(() => {
@@ -101,6 +124,22 @@ export default function Leads() {
     return () => clearInterval(id);
   }, []);
 
+  const handleDeleteLead = async (leadId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this lead?")) {
+      try {
+        const res = await (window as any).api.leads.delete(leadId);
+        if (res.success) {
+          setLeads((prev) => prev.filter((l) => l.id !== leadId));
+        } else {
+          alert("Failed to delete lead: " + res.error);
+        }
+      } catch (e) {
+        console.error("Failed to delete lead", e);
+      }
+    }
+  };
+
   const filteredLeads =
     filter === "all" ? leads : leads.filter((l) => l.status === filter);
 
@@ -116,21 +155,8 @@ export default function Leads() {
         <div>
           <h1 className="page-title">Lead Pipeline</h1>
           <p className="page-subtitle">
-            {leads.length} total leads · read-only status monitor
+            {leads.length} total leads · pipeline statuses across all campaigns
           </p>
-        </div>
-        <div
-          style={{
-            padding: "8px 14px",
-            background: "rgba(99,102,241,0.08)",
-            border: "1px solid rgba(99,102,241,0.25)",
-            borderRadius: "8px",
-            fontSize: "0.8125rem",
-            color: "var(--accent-primary)",
-            fontWeight: 600,
-          }}
-        >
-          ℹ️ To add or import leads, open a Campaign → Import Profiles
         </div>
       </div>
 
@@ -192,8 +218,8 @@ export default function Leads() {
               onClick={() => setFilter(f)}
             >
               {f === "all"
-                ? `📋 All (${leads.length})`
-                : `${statusLabels[f as LeadStatus].icon} ${statusLabels[f as LeadStatus].label}${countByStatus[f] ? ` (${countByStatus[f]})` : ""}`}
+                ? <><ClipboardList size={14} style={{display: "inline", marginBottom: "-2px"}}/> All ({leads.length})</>
+                : <span style={{display: "flex", gap: "6px", alignItems: "center"}}>{statusLabels[f as LeadStatus].icon} {statusLabels[f as LeadStatus].label}{countByStatus[f] ? ` (${countByStatus[f]})` : ""}</span>}
             </button>
           ))}
         </div>
@@ -204,7 +230,7 @@ export default function Leads() {
             className="card animate-fadeIn"
             style={{ textAlign: "center", padding: "60px 40px" }}
           >
-            <div style={{ fontSize: "48px", marginBottom: "16px" }}>📭</div>
+            <div style={{ marginBottom: "16px", color: "var(--text-muted)", display: "flex", justifyContent: "center" }}><Inbox size={48} strokeWidth={1} /></div>
             <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "12px" }}>
               No Leads in Pipeline
             </h2>
@@ -214,7 +240,7 @@ export default function Leads() {
           </div>
         ) : filteredLeads.length === 0 ? (
           <div className="card" style={{ textAlign: "center", padding: "40px" }}>
-            <div style={{ fontSize: "36px", marginBottom: "12px" }}>🔍</div>
+            <div style={{ marginBottom: "12px", color: "var(--text-muted)", display: "flex", justifyContent: "center" }}><Search size={36} strokeWidth={1} /></div>
             <p className="text-muted">No leads with this status yet.</p>
           </div>
         ) : (
@@ -222,12 +248,12 @@ export default function Leads() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border-primary)", background: "var(--bg-secondary)" }}>
-                  {["Lead", "Company", "Status", "Score", ""].map((h, i) => (
+                  {["Lead", "Contact", "Campaign", "Position / Status", "Delete"].map((h, i) => (
                     <th
                       key={h + i}
                       className="text-xs"
                       style={{
-                        textAlign: i >= 3 ? (i === 3 ? "center" : "right") : "left",
+                        textAlign: i === 4 ? "right" : "left",
                         padding: "12px 16px",
                         color: "var(--text-secondary)",
                         fontWeight: 700,
@@ -246,12 +272,10 @@ export default function Leads() {
                     key={lead.id}
                     style={{
                       borderBottom: "1px solid var(--border-subtle)",
-                      cursor: "pointer",
                       transition: "background 0.12s",
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-elevated)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                    onClick={() => setSelectedLead(lead)}
                   >
                     {/* Lead */}
                     <td style={{ padding: "12px 16px" }}>
@@ -272,34 +296,47 @@ export default function Leads() {
                           <div style={{ fontWeight: 600 }}>
                             {lead.firstName} {lead.lastName}
                           </div>
-                          <div className="text-xs text-muted">{lead.role}</div>
+                          <div className="text-xs text-muted">{lead.role || lead.company}</div>
                         </div>
                       </div>
                     </td>
 
-                    {/* Company */}
+                    {/* Contact Info */}
                     <td style={{ padding: "12px 16px" }} className="text-sm">
-                      {lead.company || "—"}
+                      {lead.email || lead.phone ? (
+                        <div className="flex flex-col gap-1">
+                          {lead.email && <div className="text-muted"><Mail size={12} className="inline mr-1"/>{lead.email}</div>}
+                          {lead.phone && <div className="text-muted">☎ {lead.phone}</div>}
+                        </div>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </td>
 
-                    {/* Status */}
+                    {/* Campaign */}
+                    <td style={{ padding: "12px 16px" }} className="text-sm">
+                      {lead.campaignName || "—"}
+                    </td>
+
+                    {/* Status / Position */}
                     <td style={{ padding: "12px 16px" }}>
                       <span
                         className={`badge ${statusLabels[lead.status as LeadStatus]?.badge || "badge-neutral"}`}
                       >
-                        {statusLabels[lead.status as LeadStatus]?.icon || "ℹ️"}{" "}
+                        {statusLabels[lead.status as LeadStatus]?.icon || <Users size={14}/>}{" "}
                         {statusLabels[lead.status as LeadStatus]?.label || lead.status}
                       </span>
                     </td>
 
-                    {/* Score */}
-                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                      <span style={{ fontWeight: 700 }}>{lead.score ?? 0}</span>
-                    </td>
-
-                    {/* View icon */}
+                    {/* Delete Action */}
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>👁 View</span>
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        style={{ background: "rgba(220, 38, 38, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(220, 38, 38, 0.2)" }}
+                        onClick={(e) => handleDeleteLead(lead.id, e)}
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -309,134 +346,6 @@ export default function Leads() {
         )}
       </div>
 
-      {/* Lead Detail Modal — read-only */}
-      {selectedLead && (
-        <div
-          style={{
-            position: "fixed", inset: 0,
-            background: "rgba(0,0,0,0.65)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            zIndex: 1000, padding: "20px", backdropFilter: "blur(2px)",
-          }}
-          onClick={() => setSelectedLead(null)}
-        >
-          <div
-            className="modal-box"
-            style={{
-              background: "var(--bg-card)", width: "100%", maxWidth: "460px",
-              borderRadius: "16px", boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-              overflow: "hidden", border: "1px solid var(--border-subtle)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div style={{ padding: "20px", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 className="text-lg font-bold" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                👤 Lead Details
-              </h2>
-              <button
-                onClick={() => setSelectedLead(null)}
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "1.25rem" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Body */}
-            <div style={{ padding: "24px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
-                <div
-                  style={{
-                    width: 64, height: 64, borderRadius: "50%",
-                    background: "var(--gradient-brand)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "1.5rem", fontWeight: 700,
-                  }}
-                >
-                  {selectedLead.firstName?.[0] || "?"}{selectedLead.lastName?.[0] || ""}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <h3 className="text-xl font-bold" style={{ marginBottom: "4px" }}>
-                      {selectedLead.firstName} {selectedLead.lastName}
-                    </h3>
-                    <span style={{ fontSize: "0.7rem", background: "rgba(99,102,241,0.1)", color: "var(--accent-primary)", padding: "2px 8px", borderRadius: "12px", whiteSpace: "nowrap", marginTop: "2px" }}>
-                      {selectedLead.connectionDegree || "3rd"}
-                    </span>
-                  </div>
-                  <div style={{ color: "var(--accent-info)", fontWeight: 600, fontSize: "0.875rem" }}>
-                    {selectedLead.role}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gap: "14px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>Company</label>
-                  <div className="text-sm">🏢 {selectedLead.company || "—"}</div>
-                </div>
-
-                {selectedLead.location && (
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>Location</label>
-                    <div className="text-sm">📍 {selectedLead.location}</div>
-                  </div>
-                )}
-
-                {selectedLead.about && (
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>About</label>
-                    <div style={{ fontSize: "0.8125rem", background: "var(--bg-secondary)", padding: "12px", borderRadius: "8px", maxHeight: "120px", overflowY: "auto", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                      {selectedLead.about}
-                    </div>
-                  </div>
-                )}
-
-                {selectedLead.experience && selectedLead.experience.length > 0 && (
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "6px" }}>Experience</label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {selectedLead.experience.slice(0, 2).map((exp: any, i: number) => (
-                        <div key={i} style={{ padding: "0 0 0 12px", borderLeft: "2px solid var(--border-primary)" }}>
-                          <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{exp.title}</div>
-                          <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>{exp.company} · {exp.duration}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label style={{ display: "block", fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>LinkedIn</label>
-                  <a
-                    href={selectedLead.linkedinUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ color: "var(--accent-primary)", fontSize: "0.8125rem", wordBreak: "break-all", textDecoration: "underline" }}
-                  >
-                    {selectedLead.linkedinUrl}
-                  </a>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "6px" }}>Pipeline Status</label>
-                  <span className={`badge ${statusLabels[selectedLead.status as LeadStatus]?.badge || "badge-neutral"}`} style={{ padding: "6px 12px", fontSize: "0.875rem" }}>
-                    {statusLabels[selectedLead.status as LeadStatus]?.icon}{" "}
-                    {statusLabels[selectedLead.status as LeadStatus]?.label || selectedLead.status}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: "16px 20px", background: "var(--bg-secondary)", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end" }}>
-              <button className="btn btn-primary" style={{ minWidth: "100px" }} onClick={() => setSelectedLead(null)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -139,6 +139,7 @@ contextBridge.exposeInMainWorld("api", {
   // System
   system: {
     wipeData: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WIPE_DATA),
+    getDbPath: createIpcInvoke(IPC_CHANNELS.SYSTEM_GET_DB_PATH),
   },
 
   // Events from main process
@@ -146,5 +147,19 @@ contextBridge.exposeInMainWorld("api", {
     notification: createIpcOn(IPC_CHANNELS.NOTIFICATION),
     appReady: createIpcOn(IPC_CHANNELS.APP_READY),
     autoPilotLog: createIpcOn("autopilot-log"),
+    inboxNewMessage: createIpcOn(IPC_CHANNELS.INBOX_NEW_MESSAGE),
+  },
+
+  // Inbox
+  inbox: {
+    getBrowserStatus: createIpcInvoke(IPC_CHANNELS.INBOX_BROWSER_STATUS),
+    getLeads: createIpcInvoke(IPC_CHANNELS.INBOX_GET_LEADS),
+    getMessages: createIpcInvoke(IPC_CHANNELS.INBOX_GET_MESSAGES),
+    syncThread: createIpcInvoke(IPC_CHANNELS.INBOX_SYNC_THREAD),
+    sendManual: createIpcInvoke(IPC_CHANNELS.INBOX_SEND_MANUAL),
+    sendWelcome: createIpcInvoke(IPC_CHANNELS.INBOX_SEND_WELCOME),
+    scheduleMeeting: createIpcInvoke(IPC_CHANNELS.INBOX_SCHEDULE_MEETING),
+    pollUnread: createIpcInvoke(IPC_CHANNELS.INBOX_POLL_UNREAD),
+    scrapeAll: createIpcInvoke('inbox:scrape-all'),
   },
 });

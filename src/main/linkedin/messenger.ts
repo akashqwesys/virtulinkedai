@@ -36,7 +36,7 @@ import { v4 as uuid } from "uuid";
 /**
  * Send a reply directly in an existing LinkedIn messaging thread.
  * Uses the thread URL (/messaging/thread/XXX/) to navigate directly
- * into the conversation — no profile navigation needed.
+ * into the conversation â€” no profile navigation needed.
  */
 export async function sendReplyInThread(
   threadId: string,
@@ -47,12 +47,12 @@ export async function sendReplyInThread(
   if (!page) throw new Error("Browser not launched");
 
   try {
-    // Build the thread URL — threadId can be the full URL or just the ID
+    // Build the thread URL â€” threadId can be the full URL or just the ID
     let threadUrl = threadId;
     if (!threadId.startsWith("http")) {
       threadUrl = `https://www.linkedin.com/messaging/thread/${threadId}/`;
     } else if (threadId.includes("/messaging/") && !threadId.includes("/thread/")) {
-      // It's a conversation list URL — use it directly
+      // It's a conversation list URL â€” use it directly
       threadUrl = threadId;
     }
 
@@ -142,13 +142,13 @@ export async function sendMessage(
     await pageLoadDelay();
     await humanDelay(1000, 2000);
 
-    // Find and click Message button — try multiple selectors
+    // Find and click Message button â€” try multiple selectors
     const messageButton = await findMessageButton(page);
 
     if (!messageButton) {
       return {
         success: false,
-        error: "Message button not found — may not be connected or profile not loaded",
+        error: "Message button not found â€” may not be connected or profile not loaded",
       };
     }
 
@@ -190,7 +190,7 @@ export async function sendMessage(
       if (isManualIntervention) {
         handoffConversation(options.leadId);
         logActivity("manual_handoff_detected", "linkedin", { leadId: options.leadId });
-        return { success: false, handedOff: true, error: "Human intervention detected — campaign paused for lead" };
+        return { success: false, handedOff: true, error: "Human intervention detected â€” campaign paused for lead" };
       }
     }
 
@@ -294,7 +294,7 @@ async function findMessageButton(page: Page): Promise<any | null> {
       }
     }
 
-    // Wider fallback — any visible button with text "Message"
+    // Wider fallback â€” any visible button with text "Message"
     const allButtons = document.querySelectorAll("button, a[href*='/messaging/'], a[href*='/sales/inbox']");
     for (const btn of allButtons) {
       const text = btn.textContent?.trim().toLowerCase() || "";
@@ -362,8 +362,8 @@ async function clickMessageSendButton(page: Page): Promise<boolean> {
 /**
  * Read unread messages from LinkedIn messaging.
  * Two-pass approach:
- *  Pass 1 — scan sidebar for unread thread metadata
- *  Pass 2 — click into each thread to get full message text + confirmed thread URL
+ *  Pass 1 â€” scan sidebar for unread thread metadata
+ *  Pass 2 â€” click into each thread to get full message text + confirmed thread URL
  */
 export async function readUnreadMessages(): Promise<
   Array<{
@@ -381,7 +381,7 @@ export async function readUnreadMessages(): Promise<
     await inPageNavigate(page, "https://www.linkedin.com/messaging/");
     await humanDelay(1500, 2500);
 
-    // ── Pass 1: Collect unread thread sidebar data ───────────────────────
+    // â”€â”€ Pass 1: Collect unread thread sidebar data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const threadMeta = await page.evaluate(() => {
       const itemSelectors = [
         ".msg-conversation-listitem",
@@ -400,7 +400,7 @@ export async function readUnreadMessages(): Promise<
       const unreadThreads: Array<{
         senderName: string;
         senderUrl: string;          // Profile URL (for lead matching)
-        snippetText: string;        // Sidebar preview — may be truncated
+        snippetText: string;        // Sidebar preview â€” may be truncated
         unreadCount: number;
         threadHref: string;         // /messaging/thread/XXX/ URL
       }> = [];
@@ -451,7 +451,7 @@ export async function readUnreadMessages(): Promise<
       return [];
     }
 
-    // ── Pass 2: Click into each thread to get full last message + thread URL ─
+    // â”€â”€ Pass 2: Click into each thread to get full last message + thread URL â”€
     const results: Array<{
       senderName: string;
       senderUrl: string;
@@ -564,12 +564,12 @@ export async function processChatbotMessage(
   const lead = db.prepare("SELECT status, interaction_count, chatbot_state FROM leads WHERE id = ?").get(leadId) as any;
   if (!lead) return { reply: null, newState: "idle", action: "wait" };
 
-  // Hard stop — lead handed off to human
+  // Hard stop â€” lead handed off to human
   if (lead.status === "handed_off") {
     return { reply: null, newState: "handed_off", action: "handoff" };
   }
 
-  // Hard stop — meeting already booked
+  // Hard stop â€” meeting already booked
   if (lead.status === "meeting_booked") {
     return { reply: null, newState: "meeting_booked", action: "wait" };
   }
@@ -589,7 +589,7 @@ export async function processChatbotMessage(
   // Run sentiment analysis on the incoming message
   const analysis = await analyzeSentiment(incomingMessage, settings.ai);
 
-  // ── Negative Sentiment / Disinterest → handoff ──────────────────────────
+  // â”€â”€ Negative Sentiment / Disinterest â†’ handoff â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (analysis.intent === "not_interested" || analysis.sentiment === "negative") {
     if (settings.chatbot.handoffOnNegativeSentiment) {
       db.prepare("UPDATE leads SET status = 'handed_off', chatbot_state = 'handed_off' WHERE id = ?").run(leadId);
@@ -597,27 +597,27 @@ export async function processChatbotMessage(
     }
   }
 
-  // ── Determine next objective based on state + sentiment ──────────────────
+  // â”€â”€ Determine next objective based on state + sentiment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let objective: "build_rapport" | "share_value" | "suggest_meeting" | "book_appointment" = "build_rapport";
   let action: "reply" | "handoff" | "book_meeting" | "wait" = "reply";
   let newState: ChatbotState = "building_rapport";
 
   if (analysis.intent === "ready_to_meet") {
-    // Lead is explicitly ready — go straight to booking
+    // Lead is explicitly ready â€” go straight to booking
     objective = "book_appointment";
     newState = "booking_appointment";
     action = "book_meeting";
   } else if (messageCount > (settings.chatbot.maxAutoMessages || 5)) {
     // We already sent the 5th booking message, and they replied again.
-    // Hard stop — Hand off to human. No more than 5 AI messages sent.
+    // Hard stop â€” Hand off to human. No more than 5 AI messages sent.
     db.prepare("UPDATE leads SET status = 'handed_off', chatbot_state = 'handed_off' WHERE id = ?").run(leadId);
     return { reply: null, newState: "handed_off", action: "handoff" };
   } else if (messageCount === (settings.chatbot.maxAutoMessages || 5)) {
-    // 5th message trigger — hard push to book a meeting
+    // 5th message trigger â€” hard push to book a meeting
     objective = "book_appointment";
     newState = "booking_appointment";
   } else if (currentState === "suggesting_meeting" || currentState === "booking_appointment") {
-    // Already pushed for meeting — keep pushing to convert
+    // Already pushed for meeting â€” keep pushing to convert
     objective = messageCount >= 4 ? "book_appointment" : "suggest_meeting";
     newState = messageCount >= 4 ? "booking_appointment" : "suggesting_meeting";
   } else if (analysis.intent === "interested" || analysis.intent === "curious") {
@@ -633,7 +633,7 @@ export async function processChatbotMessage(
     objective = "share_value";
     newState = "sharing_value";
   } else {
-    // Neutral / greeting (like "Hey, Deep") → start with rapport building
+    // Neutral / greeting (like "Hey, Deep") â†’ start with rapport building
     if (messageCount <= 1) {
       objective = "build_rapport";
       newState = "building_rapport";
@@ -654,7 +654,7 @@ export async function processChatbotMessage(
     settings.ai,
   );
 
-  // ── Calendar Link Auto-Insert (PDF C2: auto-insert meeting links) ─────────
+  // â”€â”€ Calendar Link Auto-Insert (PDF C2: auto-insert meeting links) â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // When the lead is ready to meet, fetch available slots and append to the DM.
   let reply = replyRaw;
   if (action === "book_meeting") {
@@ -666,16 +666,16 @@ export async function processChatbotMessage(
 
       if (slots.length > 0) {
         const slotLines = slots.slice(0, 3).map((s) => {
-          return `• ${s.start.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} IST`;
+          return `â€¢ ${s.start.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} IST`;
         });
         reply = `${replyRaw}\n\nHere are a few times that work for me:\n${slotLines.join("\n")}\n\nDoes any of these work for you?`;
       }
     } catch (e) {
       console.warn("[Messenger] Could not fetch calendar slots:", e);
-      // Non-fatal — reply continues without slot list
+      // Non-fatal â€” reply continues without slot list
     }
 
-    // ── Enqueue Meeting Confirmation Email ─────────────────────────────────
+    // â”€â”€ Enqueue Meeting Confirmation Email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try {
       const leadEmailRow = db.prepare("SELECT email, campaign_id FROM leads WHERE id = ?").get(leadId) as any;
       if (leadEmailRow?.email) {
@@ -787,13 +787,13 @@ export async function sendWelcomeDM(
 
     if (!resultItem) {
       console.warn(`[Messenger] No search results found for ${fullName} in inbox.`);
-      throw new Error("No search results found — lead may not exist in inbox yet");
+      throw new Error("No search results found â€” lead may not exist in inbox yet");
     }
 
     await humanClick(page, resultItem as any);
     await humanDelay(2000, 3500);
 
-    // 3. Thread Context Extraction — scroll up to load full history first
+    // 3. Thread Context Extraction â€” scroll up to load full history first
     await humanDelay(1000, 1800);
     // Scroll the message list to the very top so ALL messages are loaded
     await page.evaluate(() => {
@@ -806,7 +806,7 @@ export async function sendWelcomeDM(
     let history: Array<{role: 'user' | 'assistant', content: string}> = [];
     const messages = await page.evaluate(() => {
       const msgs: Array<{sender: string, text: string}> = [];
-      // Cast a wide net — include all event types
+      // Cast a wide net â€” include all event types
       const blocks = document.querySelectorAll(
         '.msg-s-message-list__event, .msg-s-message-group, .msg-s-event-listitem'
       );
@@ -873,9 +873,9 @@ export async function sendWelcomeDM(
     const assistantCount = history.filter(m => m.role === 'assistant').length;
     let objective: 'build_rapport' | 'share_value' | 'suggest_meeting' | 'book_appointment' = 'build_rapport';
     if (assistantCount === 0 && !userHasReplied) {
-      objective = 'build_rapport';   // Fresh thread — open with rapport
+      objective = 'build_rapport';   // Fresh thread â€” open with rapport
     } else if (assistantCount >= 1 && userHasReplied && assistantCount < 3) {
-      objective = 'share_value';     // They replied — demonstrate value
+      objective = 'share_value';     // They replied â€” demonstrate value
     } else if (assistantCount >= 3) {
       objective = 'suggest_meeting'; // Push toward a call
     }
@@ -887,12 +887,12 @@ export async function sendWelcomeDM(
       settings.ai,
     );
 
-    // ── Log the generated message before sending ──────────────────────────────
-    console.log(`\n[Messenger] ═══════════════════════════════════════════`);
+    // â”€â”€ Log the generated message before sending â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    console.log(`\n[Messenger] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`);
     console.log(`[Messenger] AI-GENERATED MESSAGE (objective: ${objective})`);
-    console.log(`[Messenger] ───────────────────────────────────────────`);
+    console.log(`[Messenger] â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
     console.log(`[Messenger] "${welcomeMessage}"`);
-    console.log(`[Messenger] ═══════════════════════════════════════════\n`);
+    console.log(`[Messenger] â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n`);
 
     // 5. Human-like Typing & Sending
     const composeBox = await page.waitForSelector(
@@ -1125,5 +1125,438 @@ export async function checkLeadThreadForReply(
     const msg = error instanceof Error ? error.message : "Unknown error";
     logActivity("thread_check_failed", "linkedin", { leadId, error: msg }, "error", msg);
     return { checked: false, replied: false, error: msg };
+  }
+}
+/**
+ * Scrape ALL conversations from the LinkedIn messaging sidebar.
+ * Uses the inbox browser page â€” never touches the campaign browser.
+ *
+ * Returns every visible conversation: name, headline, thread URL,
+ * last message preview, unread count, avatar URL.
+ * Scrolls the sidebar to load as many conversations as possible.
+ */
+export async function scrapeAllLinkedInConversations(
+  page: import('puppeteer-core').Page,
+): Promise<Array<{
+  name: string;
+  headline: string;
+  avatarUrl: string;
+  threadUrl: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
+}>> {
+  try {
+    // Ensure we are on LinkedIn (not about:blank)
+    const currentUrl = page.url();
+    if (!currentUrl.includes('linkedin.com')) {
+      await (page as any).goto('https://www.linkedin.com/messaging/', {
+        waitUntil: 'networkidle2', timeout: 30000,
+      });
+      await humanDelay(2000, 3000);
+    }
+    console.log(`[InboxScrape] Page: ${page.url()}`);
+
+    // Wait for the message list to load
+    await page.waitForSelector('.msg-conversation-listitem, .msg-conversations-list-item, [data-view-name="message-list-item"]', { timeout: 15000 }).catch(() => null);
+
+    // Scroll the sidebar to load more
+    await page.evaluate(async () => {
+      const container = document.querySelector('.msg-conversations-container__title-row')?.parentElement?.parentElement || 
+                        document.querySelector('.msg-conversations-container__conversations-list') || 
+                        document.querySelector('.msg-conversations-container__title-row')?.closest('div[id*="ember"]');
+      if (container) {
+        for (let i = 0; i < 5; i++) {
+          container.scrollTop = container.scrollHeight;
+          await new Promise(r => setTimeout(r, 800));
+        }
+      }
+    });
+
+    const conversations = await page.evaluate(() => {
+      const results: Array<any> = [];
+      const itemSelectors = [
+        ".msg-conversation-listitem",
+        ".msg-conversations-list-item",
+        "[data-view-name='message-list-item']",
+      ];
+
+      let items: NodeListOf<Element> | null = null;
+      for (const sel of itemSelectors) {
+        const found = document.querySelectorAll(sel);
+        if (found.length > 0) { items = found; break; }
+      }
+
+      if (!items) return [];
+
+      items.forEach((item) => {
+        // Name
+        const nameEl =
+          item.querySelector(".msg-conversation-card__participant-names") ||
+          item.querySelector("[class*='participant-names']") ||
+          item.querySelector("h3");
+        let name = nameEl?.textContent?.trim() || "Unknown";
+        name = name.split('\n')[0].trim(); // Take first line to avoid extra badges
+
+        // Headline
+        const headline = "";
+
+        // Avatar
+        const imgEl = item.querySelector('img');
+        const avatarUrl = imgEl?.src || "";
+
+        // Thread URL
+        const threadLinkEl = item.querySelector("a[href*='/messaging/thread/']") as HTMLAnchorElement | null;
+        let threadUrl = threadLinkEl?.href || (item.querySelector("a") as HTMLAnchorElement | null)?.href || "";
+        
+        // Handle relative URLs
+        if (threadUrl && threadUrl.startsWith('/')) {
+            threadUrl = 'https://www.linkedin.com' + threadUrl;
+        }
+
+        // Last Message
+        const messageEl =
+          item.querySelector(".msg-conversation-card__message-snippet") ||
+          item.querySelector("[class*='message-snippet']") ||
+          item.querySelector("p");
+        const lastMessage = messageEl?.textContent?.trim() || "";
+
+        // Unread Count
+        const countEl =
+          item.querySelector(".msg-conversation-card__unread-count") ||
+          item.querySelector(".notification-badge");
+          
+        let unreadCount = 0;
+        if (countEl) {
+           unreadCount = parseInt(countEl.textContent?.trim() || "1") || 1;
+        } else if (
+          item.classList.contains("msg-conversation-listitem--unread") ||
+          item.classList.contains("msg-conversations-list-item--unread")
+        ) {
+           unreadCount = 1;
+        }
+
+        // Last Message At
+        const timeEl = item.querySelector('time');
+        const timeStr = timeEl?.textContent?.trim() || '';
+        const lastMessageAt = timeStr ? new Date().toISOString() : '';
+
+        if (threadUrl && name !== 'Unknown') {
+          results.push({
+            name,
+            headline,
+            avatarUrl,
+            threadUrl,
+            lastMessage: lastMessage.slice(0, 200),
+            lastMessageAt,
+            unreadCount
+          });
+        }
+      });
+      return results;
+    });
+
+    const deduped = conversations.filter((c, idx, arr) =>
+      arr.findIndex(x => x.threadUrl === c.threadUrl) === idx
+    );
+
+    logActivity('inbox_sidebar_scraped', 'inbox', { count: deduped.length });
+    console.log(`[InboxScrape] Scraped ${deduped.length} conversations via DOM scraping.`);
+    return deduped;
+
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logActivity('inbox_sidebar_scrape_failed', 'inbox', { error: msg }, 'error', msg);
+    console.error('[InboxScrape] Failed:', msg);
+    return [];
+  }
+}
+
+
+/**
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * INBOX BROWSER FUNCTIONS
+ * These variants accept an explicit `page` parameter (the inbox browser page)
+ * so they never touch the campaign browser (getPage()).
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ */
+
+/**
+ * Send a message in a LinkedIn thread using the inbox browser page.
+ * Identical to sendReplyInThread() but takes an explicit Page parameter.
+ */
+export async function sendReplyInThreadOnPage(
+  page: import('puppeteer-core').Page,
+  threadId: string,
+  message: string,
+  options: { isAutomated?: boolean; leadId?: string } = {},
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    let threadUrl = threadId;
+    if (!threadId.startsWith("http")) {
+      threadUrl = `https://www.linkedin.com/messaging/thread/${threadId}/`;
+    }
+
+    await inPageNavigate(page as any, threadUrl);
+    await pageLoadDelay();
+    await humanDelay(1200, 2500);
+
+    const composeBox = await page.waitForSelector(
+      [
+        '.msg-form__contenteditable',
+        '[contenteditable="true"][role="textbox"]',
+        '.msg-form__msg-content-container [contenteditable]',
+        'div[data-placeholder*="Write a message"]',
+        'div[data-placeholder*="message"]',
+        '.msg-form [contenteditable]',
+      ].join(", "),
+      { timeout: 15000 }
+    ).catch(() => null);
+
+    if (!composeBox) {
+      return { success: false, error: "Compose box not found in thread" };
+    }
+
+    await humanClick(page as any, composeBox as any);
+    await humanDelay(400, 900);
+
+    for (const char of message) {
+      await page.keyboard.type(char);
+      const delay = 45 + Math.random() * 90;
+      await new Promise((r) => setTimeout(r, delay));
+      if (Math.random() < 0.04) await humanDelay(150, 400);
+    }
+
+    await thinkingDelay();
+
+    // Click send button
+    const sendSelectors = [
+      'button[type="submit"].msg-form__send-button',
+      'button.msg-form__send-button',
+      'button[aria-label="Send"]',
+      'button[aria-label*="Send message"]',
+      '.msg-form__send-btn',
+    ];
+    let sent = false;
+    for (const sel of sendSelectors) {
+      const btn = await page.$(sel);
+      if (btn) { await humanClick(page as any, btn as any); sent = true; break; }
+    }
+    if (!sent) {
+      await page.keyboard.press("Enter");
+    }
+
+    await humanDelay(800, 1500);
+
+    if (options.leadId) {
+      const db = getDatabase();
+      db.prepare(`
+        INSERT INTO conversations (id, lead_id, direction, content, platform, is_automated, sent_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(uuid(), options.leadId, 'outbound', message, 'linkedin', options.isAutomated ? 1 : 0, new Date().toISOString());
+
+      // Mark lead as handed off to human (manual send stops AI chatbot)
+      if (!options.isAutomated) {
+        db.prepare(`
+          UPDATE leads SET status = 'in_conversation', chatbot_state = 'handed_off', updated_at = ?
+          WHERE id = ? AND chatbot_state != 'handed_off'
+        `).run(new Date().toISOString(), options.leadId);
+      }
+    }
+
+    logActivity("inbox_manual_reply_sent", "inbox", {
+      threadId,
+      messageLength: message.length,
+      isAutomated: options.isAutomated ?? false,
+    });
+
+    return { success: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    logActivity("inbox_manual_reply_failed", "inbox", { threadId, error: msg }, "error", msg);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Scrape a lead's full LinkedIn thread using the inbox browser page.
+ * Saves/updates messages in the conversations table.
+ * Returns the full conversation history from DB.
+ *
+ * Uses the inbox browser page (passed explicitly) â€” never touches campaign browser.
+ */
+export async function scrapeAndSaveThread(
+  leadId: string,
+  fullName: string,
+  page: import('puppeteer-core').Page,
+): Promise<Array<{
+  id: string;
+  leadId: string;
+  direction: string;
+  content: string;
+  platform: string;
+  isAutomated: boolean;
+  sentAt: string;
+}>> {
+  const db = getDatabase();
+
+  try {
+    // 1. Navigate to messaging
+    await inPageNavigate(page as any, "https://www.linkedin.com/messaging/");
+    await pageLoadDelay();
+    await humanDelay(1500, 2500);
+
+    // 2. Search for lead by name
+    console.log(`[InboxScrape] Searching inbox for: ${fullName}`);
+    const searchSelectors = [
+      'input.msg-search-form__search-field',
+      '[placeholder*="Search messages"]',
+      'input[role="combobox"]',
+    ];
+
+    let searchInput: any = null;
+    for (const sel of searchSelectors) {
+      searchInput = await page.$(sel).catch(() => null);
+      if (searchInput) break;
+    }
+
+    if (searchInput) {
+      await humanClick(page as any, searchInput);
+      await humanDelay(300, 600);
+      // Clear existing text
+      await page.keyboard.down("Control");
+      await page.keyboard.press("a");
+      await page.keyboard.up("Control");
+      await page.keyboard.press("Backspace");
+      await humanDelay(200, 400);
+
+      for (const char of fullName) {
+        await page.keyboard.type(char, { delay: 55 + Math.random() * 45 });
+      }
+      await humanDelay(3000, 4500);
+      await page.keyboard.press("Enter");
+      await humanDelay(2000, 3000);
+    }
+
+    // 3. Click first conversation result
+    const resultItem = await page.waitForSelector(
+      '.msg-conversation-listitem, .msg-conversations-list-item, [data-view-name="message-list-item"]',
+      { timeout: 8000 }
+    ).catch(() => null);
+
+    if (!resultItem) {
+      console.warn(`[InboxScrape] No thread found for "${fullName}" in inbox.`);
+      // Fall back to DB messages only
+      return db.prepare(
+        "SELECT id, lead_id, direction, content, platform, is_automated, sent_at FROM conversations WHERE lead_id = ? ORDER BY sent_at ASC"
+      ).all(leadId).map((r: any) => ({
+        id: r.id, leadId: r.lead_id, direction: r.direction, content: r.content,
+        platform: r.platform, isAutomated: !!r.is_automated, sentAt: r.sent_at,
+      }));
+    }
+
+    await humanClick(page as any, resultItem as any);
+    await humanDelay(2000, 3500);
+
+    // 4. Save thread URL for future direct navigation
+    const threadUrl = page.url();
+    if (threadUrl && threadUrl.includes('/messaging/')) {
+      db.prepare("UPDATE leads SET thread_url = ? WHERE id = ?").run(threadUrl, leadId);
+    }
+
+    // 5. Scroll to top to load older messages
+    await page.evaluate(() => {
+      const msgList = document.querySelector('.msg-s-message-list, .msg-s-message-list-container');
+      if (msgList) msgList.scrollTop = 0;
+    }).catch(() => null);
+    await humanDelay(1500, 2500);
+
+    // 6. Extract all message blocks
+    const rawMessages = await page.evaluate(() => {
+      const msgs: Array<{ sender: string; text: string; timestamp: string }> = [];
+      const blocks = document.querySelectorAll(
+        '.msg-s-message-list__event, .msg-s-message-group, .msg-s-event-listitem'
+      );
+      blocks.forEach(block => {
+        const senderEl =
+          block.querySelector('.msg-s-message-group__name') ||
+          block.querySelector('.msg-s-message-list-item__user-name') ||
+          block.querySelector('[data-test-id="message-sender-name"]');
+
+        const textElements = block.querySelectorAll(
+          '.msg-s-event-listitem__body, .msg-s-event__content p, .msg-s-event__content span, p'
+        );
+        const texts: string[] = [];
+        textElements.forEach(el => {
+          const t = el.textContent?.trim();
+          if (t && t.length > 0) texts.push(t);
+        });
+        const unique = [...new Set(texts)];
+
+        const timeEl = block.querySelector('time');
+        const timestamp = timeEl?.getAttribute('datetime') || new Date().toISOString();
+
+        if (unique.length > 0) {
+          msgs.push({
+            sender: senderEl?.textContent?.trim() || 'Unknown',
+            text: unique.join(' '),
+            timestamp,
+          });
+        }
+      });
+      return msgs;
+    });
+
+    // 7. Determine who sent each message (us vs. lead)
+    //    LinkedIn marks our own messages with "You" in the sender element
+    const existingMessages = db.prepare(
+      "SELECT content FROM conversations WHERE lead_id = ?"
+    ).all(leadId).map((r: any) => r.content);
+    const existingSet = new Set(existingMessages);
+
+    let insertedCount = 0;
+    for (const msg of rawMessages) {
+      if (existingSet.has(msg.text)) continue; // already in DB
+
+      const senderLower = msg.sender.toLowerCase();
+      const direction = (senderLower === 'you' || senderLower.includes('you')) ? 'outbound' : 'inbound';
+
+      db.prepare(`
+        INSERT INTO conversations (id, lead_id, direction, content, platform, is_automated, sent_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(uuid(), leadId, direction, msg.text, 'linkedin', 0, msg.timestamp);
+
+      existingSet.add(msg.text);
+      insertedCount++;
+    }
+
+    console.log(`[InboxScrape] Thread synced for "${fullName}": ${insertedCount} new messages saved.`);
+    logActivity("inbox_thread_synced", "inbox", { leadId, fullName, newMessages: insertedCount });
+
+    // 8. Return all messages from DB (includes previously stored ones)
+    return db.prepare(
+      "SELECT id, lead_id, direction, content, platform, is_automated, sent_at FROM conversations WHERE lead_id = ? ORDER BY sent_at ASC"
+    ).all(leadId).map((r: any) => ({
+      id: r.id,
+      leadId: r.lead_id,
+      direction: r.direction,
+      content: r.content,
+      platform: r.platform,
+      isAutomated: !!r.is_automated,
+      sentAt: r.sent_at,
+    }));
+
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    logActivity("inbox_thread_scrape_failed", "inbox", { leadId, fullName, error: msg }, "error", msg);
+    console.error(`[InboxScrape] Failed for "${fullName}":`, msg);
+
+    // Return whatever is in DB so the UI isn't empty
+    return db.prepare(
+      "SELECT id, lead_id, direction, content, platform, is_automated, sent_at FROM conversations WHERE lead_id = ? ORDER BY sent_at ASC"
+    ).all(leadId).map((r: any) => ({
+      id: r.id, leadId: r.lead_id, direction: r.direction, content: r.content,
+      platform: r.platform, isAutomated: !!r.is_automated, sentAt: r.sent_at,
+    }));
   }
 }

@@ -1,4 +1,25 @@
 import { useState, useEffect } from "react";
+import {
+  Briefcase,
+  Bot,
+  Mail,
+  Globe,
+  Lock,
+  Settings as SettingsIcon,
+  Search,
+  User,
+  UserPlus,
+  Send,
+  Calendar,
+  AlertTriangle,
+  Trash2,
+  RefreshCw,
+  LogOut,
+  Link as LinkIcon,
+  CheckCircle2,
+  Rocket,
+  Activity
+} from "lucide-react";
 
 declare global {
   interface Window {
@@ -264,14 +285,14 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     return date.toLocaleDateString();
   }
 
-  const moduleIcons: Record<string, string> = {
-    browser: "🌐",
-    linkedin: "💼",
-    ai: "🤖",
-    microsoft: "📧",
-    session: "🔐",
-    system: "⚙️",
-    settings: "🔧",
+  const moduleIcons: Record<string, React.ReactNode> = {
+    browser: <Globe size={18} />,
+    linkedin: <Briefcase size={18} />,
+    ai: <Bot size={18} />,
+    microsoft: <Mail size={18} />,
+    session: <Lock size={18} />,
+    system: <SettingsIcon size={18} />,
+    settings: <SettingsIcon size={18} />,
   };
 
   return (
@@ -291,10 +312,10 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             disabled={loading.browser || browserStatus === "running"}
           >
             {loading.browser
-              ? "⏳ Launching..."
+              ? <><RefreshCw size={16} className="animate-spin" /> Launching...</>
               : browserStatus === "running"
-                ? "✅ Browser Running"
-                : "🚀 Launch Browser"}
+                ? <><CheckCircle2 size={16} /> Browser Running</>
+                : <><Rocket size={16} /> Launch Browser</>}
           </button>
         </div>
       </div>
@@ -315,7 +336,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 color: "#0a66c2",
               }}
             >
-              💼
+              <Briefcase size={20} />
             </div>
             <div className="stat-label">LinkedIn</div>
             <div
@@ -345,7 +366,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 onClick={handleLinkedInLogin}
                 disabled={loading.linkedin}
               >
-                {loading.linkedin ? "⏳ Logging in..." : "🔗 Connect LinkedIn"}
+                {loading.linkedin ? <><RefreshCw size={14} className="animate-spin" /> Logging in...</> : <><LinkIcon size={14} /> Connect LinkedIn</>}
               </button>
             )}
             {linkedinStatus.isLoggedIn && (
@@ -355,7 +376,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 onClick={handleLinkedInLogout}
                 disabled={loading.linkedin}
               >
-                {loading.linkedin ? "⏳ Logging out..." : "🚪 Logout"}
+                {loading.linkedin ? <><RefreshCw size={14} className="animate-spin" /> Logging out...</> : <><LogOut size={14} /> Logout</>}
               </button>
             )}
           </div>
@@ -369,7 +390,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 color: "#8b5cf6",
               }}
             >
-              🤖
+              <Bot size={20} />
             </div>
             <div className="stat-label">AI Engine (Ollama)</div>
             <div
@@ -396,7 +417,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               style={{ marginTop: "12px", width: "100%" }}
               onClick={checkAIStatus}
             >
-              🔄 Refresh Status
+              <RefreshCw size={14} /> Refresh Status
             </button>
           </div>
 
@@ -409,7 +430,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 color: "#0078d4",
               }}
             >
-              📧
+              <Mail size={20} />
             </div>
             <div className="stat-label">O365 Email</div>
             <div
@@ -439,7 +460,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 onClick={handleEmailAuth}
                 disabled={loading.email}
               >
-                {loading.email ? "⏳ Authenticating..." : "🔐 Connect O365"}
+                {loading.email ? <><RefreshCw size={14} className="animate-spin" /> Authenticating...</> : <><Lock size={14} /> Connect O365</>}
               </button>
             )}
           </div>
@@ -453,7 +474,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 color: "#3b82f6",
               }}
             >
-              🌐
+              <Globe size={20} />
             </div>
             <div className="stat-label">Browser Engine</div>
             <div
@@ -491,7 +512,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         {/* Quick Actions */}
         <div className="card" style={{ marginBottom: "32px" }}>
           <div className="card-header">
-            <h3 className="card-title">⚡ Quick Actions</h3>
+            <h3 className="card-title"><Rocket size={18} style={{color: "var(--accent-primary)"}}/> Quick Actions</h3>
           </div>
           <div className="flex gap-3" style={{ flexWrap: "wrap" }}>
             <button
@@ -499,42 +520,42 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               disabled={!linkedinStatus.isLoggedIn}
               onClick={() => onNavigate?.("leads")}
             >
-              🔍 Search Leads
+              <Search size={16} /> Search Leads
             </button>
             <button
               className="btn btn-secondary"
               disabled={!linkedinStatus.isLoggedIn}
               onClick={() => onNavigate?.("leads")}
             >
-              👤 Scrape Profile
+              <User size={16} /> Scrape Profile
             </button>
             <button
               className="btn btn-secondary"
               disabled={!linkedinStatus.isLoggedIn}
               onClick={() => onNavigate?.("campaigns")}
             >
-              🤝 Send Connections
+              <UserPlus size={16} /> Send Connections
             </button>
             <button
               className="btn btn-secondary"
               disabled={!emailStatus.authenticated}
               onClick={() => onNavigate?.("templates")}
             >
-              ✉️ Send Email
+              <Send size={16} /> Send Email
             </button>
             <button
               className="btn btn-secondary"
               disabled={!aiStatus.online}
               onClick={() => onNavigate?.("content")}
             >
-              🤖 Generate Content
+              <Bot size={16} /> Generate Content
             </button>
             <button
               className="btn btn-secondary"
               disabled={!emailStatus.authenticated}
               onClick={() => onNavigate?.("inbox")}
             >
-              📅 Create Meeting
+              <Calendar size={16} /> Create Meeting
             </button>
           </div>
         </div>
@@ -542,12 +563,12 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         {/* Activity Log */}
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">📋 Recent Activity</h3>
+            <h3 className="card-title"><Activity size={18} /> Recent Activity</h3>
             <button
               className="btn btn-secondary btn-sm"
               onClick={loadActivities}
             >
-              🔄 Refresh
+              <RefreshCw size={14} /> Refresh
             </button>
           </div>
           <div style={{ maxHeight: "400px", overflowY: "auto" }}>
@@ -578,8 +599,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                         : "none",
                   }}
                 >
-                  <span style={{ fontSize: "20px" }}>
-                    {moduleIcons[act.module] || "📌"}
+                  <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "32px", height: "32px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-sm)", color: "var(--text-secondary)" }}>
+                    {moduleIcons[act.module] || <Activity size={16} />}
                   </span>
                   <div style={{ flex: 1 }}>
                     <div className="text-sm font-semibold">
@@ -605,7 +626,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         {/* Danger Zone */}
         <div className="card" style={{ marginTop: "40px", border: "1px solid var(--accent-danger-subtle)", background: "rgba(239, 68, 68, 0.02)" }}>
           <div className="card-header">
-            <h3 className="card-title" style={{ color: "var(--accent-danger)" }}>⚠️ Danger Zone</h3>
+            <h3 className="card-title" style={{ color: "var(--accent-danger)" }}><AlertTriangle size={18} /> Danger Zone</h3>
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -617,7 +638,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               onClick={handleWipeData}
               disabled={loading.wipe}
             >
-              {loading.wipe ? "⏳ Wiping..." : "🗑️ Reset Everything"}
+              {loading.wipe ? <><RefreshCw size={14} className="animate-spin" /> Wiping...</> : <><Trash2 size={14} /> Reset Everything</>}
             </button>
           </div>
         </div>

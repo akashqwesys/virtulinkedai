@@ -1,17 +1,24 @@
 import { useState, useEffect } from "react";
+import { 
+  Settings as SettingsIcon, Shield, Bot, Mail, MessageSquare, 
+  Search, Save, LogOut, CheckCircle2, XCircle, Link as LinkIcon, 
+  Unlink, AlertTriangle, Building, Calendar, Info, RefreshCw, Database
+} from "lucide-react";
 
 export default function Settings() {
   const [settings, setSettings] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "general" | "limits" | "ai" | "microsoft" | "chatbot" | "enrichment"
+    "general" | "limits" | "ai" | "microsoft" | "chatbot" | "enrichment" | "database"
   >("general");
 
   // Microsoft 365 connection state
   const [msStatus, setMsStatus] = useState<{ connected: boolean; userEmail?: string } | null>(null);
   const [msConnecting, setMsConnecting] = useState(false);
   const [msDisconnecting, setMsDisconnecting] = useState(false);
+
+  const [dbPath, setDbPath] = useState<string>("");
 
 
   useEffect(() => {
@@ -22,6 +29,9 @@ export default function Settings() {
   useEffect(() => {
     if (activeTab === "microsoft") {
       window.api.email.getStatus().then((s: any) => setMsStatus(s)).catch(() => setMsStatus({ connected: false }));
+    }
+    if (activeTab === "database" && !dbPath) {
+      window.api.system.getDbPath().then((path: string) => setDbPath(path)).catch(console.error);
     }
   }, [activeTab]);
 
@@ -68,12 +78,13 @@ export default function Settings() {
       const result = await window.api.email.authenticate();
       if (result?.success) {
         setMsStatus({ connected: true, userEmail: result.userEmail });
+        alert("Successfully connected to Microsoft 365!");
       } else {
-        alert("Microsoft login failed: " + (result?.error || "Unknown error"));
+        alert("Error while connecting, try again. " + (result?.error || "Unknown error"));
         setMsStatus({ connected: false });
       }
     } catch (e: any) {
-      alert("Microsoft login error: " + e?.message);
+      alert("Error while connecting, try again. " + e?.message);
       setMsStatus({ connected: false });
     }
     setMsConnecting(false);
@@ -129,12 +140,13 @@ export default function Settings() {
   }
 
   const tabs = [
-    { key: "general", label: "⚙️ General" },
-    { key: "limits", label: "🛡️ Safety Limits" },
-    { key: "ai", label: "🤖 AI Engine" },
-    { key: "microsoft", label: "📧 Microsoft 365" },
-    { key: "chatbot", label: "💬 Chatbot" },
-    { key: "enrichment", label: "🔍 Enrichment" },
+    { key: "general", label: <><SettingsIcon size={14} className="mr-1"/> General</> },
+    { key: "limits", label: <><Shield size={14} className="mr-1"/> Safety Limits</> },
+    { key: "ai", label: <><Bot size={14} className="mr-1"/> AI Engine</> },
+    { key: "microsoft", label: <><Mail size={14} className="mr-1"/> Microsoft 365</> },
+    { key: "chatbot", label: <><MessageSquare size={14} className="mr-1"/> Chatbot</> },
+    { key: "enrichment", label: <><Search size={14} className="mr-1"/> Enrichment</> },
+    { key: "database", label: <><Database size={14} className="mr-1"/> Database</> },
   ] as const;
 
   return (
@@ -149,7 +161,7 @@ export default function Settings() {
           onClick={saveSettings}
           disabled={saving}
         >
-          {saving ? "⏳ Saving..." : "💾 Save Settings"}
+          {saving ? <><RefreshCw size={14} className="animate-spin"/> Saving...</> : <><Save size={14}/> Save Settings</>}
         </button>
       </div>
 
@@ -194,7 +206,7 @@ export default function Settings() {
                   onClick={handleLogout}
                   disabled={loggingOut}
                 >
-                  {loggingOut ? "⏳ Logging out..." : "🚪 Logout from LinkedIn"}
+                  {loggingOut ? <><RefreshCw size={14} className="animate-spin"/> Logging out...</> : <><LogOut size={14}/> Logout from LinkedIn</>}
                 </button>
               </div>
             </div>
@@ -290,13 +302,13 @@ export default function Settings() {
                   className="btn btn-secondary btn-sm"
                   onClick={() => updateSettings("workingHours.workDays", [1, 2, 3, 4, 5])}
                 >
-                  🏢 Weekdays Only
+                  <Building size={14}/> Weekdays Only
                 </button>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => updateSettings("workingHours.workDays", [0, 1, 2, 3, 4, 5, 6])}
                 >
-                  📅 All Week
+                  <Calendar size={14}/> All Week
                 </button>
               </div>
             </div>
@@ -590,12 +602,12 @@ export default function Settings() {
                   }}
                 />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: "14px" }}>
+                  <div style={{ fontWeight: 600, fontSize: "14px", display: "flex", alignItems: "center", gap: "6px" }}>
                     {msStatus === null
                       ? "Checking status..."
                       : msStatus.connected
-                      ? "✅ Connected to Microsoft 365"
-                      : "❌ Not Connected"}
+                      ? <><CheckCircle2 size={16} color="var(--accent-success)"/> Connected to Microsoft 365</>
+                      : <><XCircle size={16} color="var(--accent-danger)"/> Not Connected</>}
                   </div>
                   {msStatus?.connected && msStatus.userEmail && (
                     <div className="text-sm text-muted" style={{ marginTop: "2px" }}>
@@ -613,7 +625,7 @@ export default function Settings() {
                     onClick={handleConnectMicrosoft}
                     disabled={msConnecting || !settings.microsoft.clientId || !settings.microsoft.tenantId}
                   >
-                    {msConnecting ? "⏳ Connecting..." : "🔗 Connect Microsoft 365"}
+                    {msConnecting ? <><RefreshCw size={14} className="animate-spin"/> Connecting...</> : <><LinkIcon size={14}/> Connect Microsoft 365</>}
                   </button>
                 ) : (
                   <button
@@ -622,36 +634,76 @@ export default function Settings() {
                     onClick={handleDisconnectMicrosoft}
                     disabled={msDisconnecting}
                   >
-                    {msDisconnecting ? "⏳ Disconnecting..." : "🔌 Disconnect"}
+                    {msDisconnecting ? <><RefreshCw size={14} className="animate-spin"/> Disconnecting...</> : <><Unlink size={14}/> Disconnect</>}
                   </button>
                 )}
               </div>
 
               {!settings.microsoft.clientId || !settings.microsoft.tenantId ? (
-                <div className="text-sm text-muted" style={{ marginTop: "12px" }}>
-                  ⚠️ Enter your <strong>Client ID</strong> and <strong>Tenant ID</strong> above,
+                <div className="text-sm text-muted" style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <AlertTriangle size={14} color="var(--accent-warning)"/> Enter your <strong>Client ID</strong> and <strong>Tenant ID</strong> above,
                   then click Save Settings before connecting.
                 </div>
               ) : null}
             </div>
 
-            {/* Required Permissions Info */}
+            {/* Comprehensive Setup Guide */}
             <div
+              className="card"
               style={{
-                padding: "14px",
-                background: "rgba(99, 102, 241, 0.05)",
-                borderRadius: "8px",
-                border: "1px solid rgba(99, 102, 241, 0.15)",
+                marginTop: "24px",
+                padding: "24px",
               }}
             >
-              <div style={{ fontWeight: 600, marginBottom: "6px", color: "var(--accent-primary)", fontSize: "13px" }}>
-                ℹ️ Required API Permissions (Azure Portal)
+              <div style={{ fontWeight: 600, marginBottom: "16px", fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Info size={18} color="var(--accent-primary)" /> Step-by-Step Guide: Connect Office 365
               </div>
-              <div className="text-sm text-muted">
-                Under <strong>API Permissions → Microsoft Graph → Delegated</strong>, add:{" "}
-                <strong>Mail.Send</strong>, <strong>Mail.ReadWrite</strong>,{" "}
-                <strong>Calendars.ReadWrite</strong>, <strong>User.Read</strong>,{" "}
-                <strong>offline_access</strong>
+              
+              <div className="text-sm text-muted" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 1: Create Azure App</strong>
+                  <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
+                    <li>Go to the <a href="https://entra.microsoft.com/" target="_blank" rel="noreferrer" style={{color: "var(--accent-primary)", textDecoration: "none"}}>Microsoft Entra admin center</a>.</li>
+                    <li>Navigate to <strong>Applications → App registrations</strong> and click <strong>+ New registration</strong>.</li>
+                    <li>Name your app (e.g., VirtuLinked AI).</li>
+                    <li>For Supported account types, select <strong>Accounts in any organizational directory and personal Microsoft accounts</strong>.</li>
+                    <li>Click <strong>Register</strong>.</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 2: Configure the Platform</strong>
+                  <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
+                    <li>Go to <strong>Authentication</strong> on the left menu.</li>
+                    <li>Click <strong>+ Add a platform</strong> and select <strong>Mobile and desktop applications</strong>.</li>
+                    <li>In the Custom redirect URIs box, paste exactly: <code style={{background:"rgba(100,100,100,0.15)", padding:"2px 6px", borderRadius:"4px"}}>http://localhost:3847/auth/callback</code></li>
+                    <li>Also check the box for <code style={{background:"rgba(100,100,100,0.15)", padding:"2px 6px", borderRadius:"4px"}}>http://localhost</code> (or add it manually).</li>
+                    <li>Click <strong>Configure</strong>.</li>
+                    <li>Scroll down to <strong>Advanced settings</strong>, toggle <strong>Allow public client flows</strong> to <strong>Yes</strong>, and save.</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 3: Add API Permissions</strong>
+                  <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
+                    <li>Go to <strong>API permissions</strong> on the left menu.</li>
+                    <li>Click <strong>+ Add a permission</strong> → <strong>Microsoft Graph</strong> → <strong>Delegated permissions</strong>.</li>
+                    <li>Search for and check: <strong>Mail.Send</strong>, <strong>Mail.ReadWrite</strong>, <strong>Calendars.ReadWrite</strong>, <strong>User.Read</strong>, and <strong>offline_access</strong>.</li>
+                    <li>Click <strong>Add permissions</strong>.</li>
+                    <li>Click <strong>Grant admin consent</strong> (if your account has admin rights, this avoids extra prompts).</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 4: Connect to Application</strong>
+                  <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
+                    <li>Go back to <strong>Overview</strong> in the Azure portal.</li>
+                    <li>Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>.</li>
+                    <li>Paste them into the fields above in this Settings page.</li>
+                    <li>Click <strong>Save Settings</strong> at the top right of this page.</li>
+                    <li>Click the blue <strong>Connect Microsoft 365</strong> button above and sign in!</li>
+                  </ol>
+                </div>
               </div>
             </div>
           </div>
@@ -832,6 +884,74 @@ export default function Settings() {
                 provider to find a business email, then send a personalized
                 follow-up via Microsoft 365.
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Database Settings */}
+        {activeTab === "database" && (
+          <div className="card animate-fadeIn">
+            <h3 className="card-title" style={{ marginBottom: "8px" }}>
+              Local Database Management
+            </h3>
+            <p className="text-sm text-muted" style={{ marginBottom: "24px" }}>
+              VirtuLinked AI stores all your leads securely and entirely offline using SQLite. 
+              Here is how you can view your data using standard database tools.
+            </p>
+
+            <div className="input-group">
+              <label className="input-label">Local Database File Path</label>
+              <div className="flex gap-2">
+                <input
+                  className="input"
+                  readOnly
+                  value={dbPath || "Loading path..."}
+                  style={{ fontFamily: "monospace", flex: 1, backgroundColor: "var(--bg-secondary)", color: "var(--text-secondary)" }}
+                />
+                <button 
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    navigator.clipboard.writeText(dbPath);
+                    alert("Path copied to clipboard!");
+                  }}
+                >
+                  Copy Path
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: "32px", padding: "16px", borderRadius: "10px", backgroundColor: "var(--bg-secondary)" }}>
+              <h4 style={{ fontWeight: 600, marginBottom: "12px", color: "var(--text-primary)" }}>How to view your Database on this PC:</h4>
+              <ol style={{ paddingLeft: "24px", margin: 0, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <li>
+                  <strong style={{ color: "var(--text-primary)" }}>Using VS Code:</strong>
+                  <div>Open VS Code, go to Extensions and install "SQLite Viewer" by Florian Klampfer. Press <code>Ctrl+P</code> (or <code>Cmd+P</code>), paste the path above, and press Enter to instantly open your DB in the editor.</div>
+                </li>
+                <li>
+                  <strong style={{ color: "var(--text-primary)" }}>Using DB Browser for SQLite:</strong>
+                  <div>Download <a href="https://sqlitebrowser.org" target="_blank" rel="noreferrer" style={{ color: "var(--accent-primary)", textDecoration: "underline" }}>DB Browser for SQLite</a>. Open it, click "Open Database" and paste the path above to view or query your leads safely.</div>
+                </li>
+              </ol>
+            </div>
+
+            <div style={{ marginTop: "20px", padding: "16px", borderRadius: "10px", backgroundColor: "var(--bg-card)", border: "1px dashed var(--border-subtle)" }}>
+              <h4 style={{ fontWeight: 600, marginBottom: "12px", color: "var(--text-primary)" }}>How to view on another device:</h4>
+              <ul style={{ paddingLeft: "24px", margin: 0, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <li>
+                  <strong>Windows:</strong> <code>%APPDATA%\virtulinked-ai\virtulinked.db</code>
+                </li>
+                <li>
+                  <strong>macOS:</strong> <code>~/Library/Application Support/virtulinked-ai/virtulinked.db</code>
+                </li>
+                <li>
+                  <strong>Linux:</strong> <code>~/.config/virtulinked-ai/virtulinked.db</code>
+                </li>
+              </ul>
+            </div>
+            
+            <div style={{ marginTop: "16px", fontSize: "0.85rem", color: "var(--accent-warning)", display: "flex", alignItems: "center", gap: "8px" }}>
+              <AlertTriangle size={14}/>
+              Note: Do not delete or manually lock the `.db` file while VirtuLinked AI is running.
             </div>
           </div>
         )}
