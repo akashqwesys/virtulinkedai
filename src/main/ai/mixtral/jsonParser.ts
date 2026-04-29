@@ -44,6 +44,7 @@ OUTPUT (valid JSON only):`;
       const responseText = await generateWithOllama(prompt, settings, {
         temperature: Math.min(0.1 * attempt, 0.7), // cap temperature at 0.7 to avoid chaos
         maxTokens: 2048,
+        skipBrochureContext: true,
       });
       
       console.log(`[AI/JSON] Attempt ${attempt}: received LLM response length: ${responseText.length}`);

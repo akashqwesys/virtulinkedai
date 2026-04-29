@@ -10,6 +10,7 @@ export async function generatePostComment(
   authorName: string,
   context: {
     yourName: string;
+    yourCompany?: string;
     yourExpertise: string;
   },
   settings: AppSettings["ai"],
@@ -19,7 +20,13 @@ export async function generatePostComment(
 POST BY: ${authorName}
 POST CONTENT: ${postContent.substring(0, 500)}
 
-YOUR CONTEXT: You are ${context.yourName}, with expertise in ${context.yourExpertise}
+YOUR CONTEXT: You are ${context.yourName}, representing ${context.yourCompany || 'Veda AI Lab'} — a white-label AI R&D partner for agencies delivering AI agents, chatbots, automation, voice AI, self-hosted LLMs, and ERP intelligence.
+
+KNOWLEDGE BASE GUIDANCE:
+- Draw from SECTION 5 (Technical Ecosystem) and SECTION 4 (Services) to demonstrate genuine domain expertise relevant to the post.
+- Reference specific integrations or tech stack items that match the post's topic (e.g., mention LangChain if the post is about AI, or n8n if it's about automation).
+- If the post touches on ERP, automation, AI, compliance, or sales — draw from the matching service sub-capability to add a concrete insight.
+- Sound like a practitioner building these systems, not a marketer promoting them. Zero promotional language.
 
 RULES:
 1. Be genuinely insightful - add value to the conversation

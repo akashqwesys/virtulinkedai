@@ -4,6 +4,7 @@ import {
   RefreshCw, Plus, Calendar, Zap, ThumbsUp, MessageSquare, 
   PenTool, Send 
 } from "lucide-react";
+import Modal from "../components/Modal";
 
 interface ScheduledPostItem {
   id: string;
@@ -392,130 +393,109 @@ export default function ContentCalendar() {
         </div>
 
         {/* Post Composer Modal */}
-        {showComposer && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.4)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              backdropFilter: "blur(4px)",
-            }}
-          >
+        <Modal
+          isOpen={showComposer}
+          onClose={() => setShowComposer(false)}
+          title="Create Post"
+          icon={<PenTool size={20} />}
+          width="600px"
+          disableClose={scheduling}
+        >
+          <div className="input-group">
+            <label className="input-label">Content</label>
+            <textarea
+              className="input textarea"
+              rows={6}
+              placeholder="Write your LinkedIn post here..."
+              value={draft.content}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, content: e.target.value }))
+              }
+              style={{ resize: "vertical" }}
+            />
             <div
-              className="card animate-fadeIn"
-              style={{ width: "600px", maxWidth: "90vw" }}
+              className="text-sm text-muted"
+              style={{ marginTop: "4px" }}
             >
-              <h2
-                style={{
-                  fontSize: "1.25rem",
-                  fontWeight: 700,
-                  marginBottom: "24px",
-                  display: "flex", alignItems: "center", gap: "8px"
-                }}
-              >
-                <PenTool size={20}/> Create Post
-              </h2>
-
-              <div className="input-group">
-                <label className="input-label">Content</label>
-                <textarea
-                  className="input textarea"
-                  rows={6}
-                  placeholder="Write your LinkedIn post here..."
-                  value={draft.content}
-                  onChange={(e) =>
-                    setDraft((prev) => ({ ...prev, content: e.target.value }))
-                  }
-                  style={{ resize: "vertical" }}
-                />
-                <div
-                  className="text-sm text-muted"
-                  style={{ marginTop: "4px" }}
-                >
-                  {draft.content.length} characters
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <div className="input-group" style={{ flex: 1 }}>
-                  <label className="input-label">Post Type</label>
-                  <select
-                    className="input"
-                    value={draft.type}
-                    onChange={(e) =>
-                      setDraft((prev) => ({ ...prev, type: e.target.value }))
-                    }
-                  >
-                    <option value="text">Text</option>
-                    <option value="image">Image</option>
-                    <option value="poll">Poll</option>
-                    <option value="article">Article</option>
-                  </select>
-                </div>
-                <div className="input-group" style={{ flex: 2 }}>
-                  <label className="input-label">Schedule For</label>
-                  <input
-                    type="datetime-local"
-                    className="input"
-                    value={draft.scheduledAt}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        scheduledAt: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">
-                  Hashtags (comma-separated)
-                </label>
-                <input
-                  className="input"
-                  placeholder="linkedin, automation, ai"
-                  value={draft.hashtags}
-                  onChange={(e) =>
-                    setDraft((prev) => ({ ...prev, hashtags: e.target.value }))
-                  }
-                />
-              </div>
-
-              <div
-                className="flex gap-3"
-                style={{ justifyContent: "flex-end" }}
-              >
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowComposer(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={handlePublishNow}
-                  disabled={scheduling || !draft.content.trim()}
-                >
-                  {scheduling ? <><RefreshCw size={14} className="animate-spin mr-1"/>...</> : <><Send size={14} className="mr-1"/> Publish Now</>}
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSchedulePost}
-                  disabled={
-                    scheduling || !draft.content.trim() || !draft.scheduledAt
-                  }
-                >
-                  {scheduling ? <><RefreshCw size={14} className="animate-spin mr-1"/> Scheduling...</> : <><Calendar size={14} className="mr-1"/> Schedule</>}
-                </button>
-              </div>
+              {draft.content.length} characters
             </div>
           </div>
-        )}
+
+          <div className="flex gap-4">
+            <div className="input-group" style={{ flex: 1 }}>
+              <label className="input-label">Post Type</label>
+              <select
+                className="input"
+                value={draft.type}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, type: e.target.value }))
+                }
+              >
+                <option value="text">Text</option>
+                <option value="image">Image</option>
+                <option value="poll">Poll</option>
+                <option value="article">Article</option>
+              </select>
+            </div>
+            <div className="input-group" style={{ flex: 2 }}>
+              <label className="input-label">Schedule For</label>
+              <input
+                type="datetime-local"
+                className="input"
+                value={draft.scheduledAt}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    scheduledAt: e.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+
+          <div className="input-group">
+            <label className="input-label">
+              Hashtags (comma-separated)
+            </label>
+            <input
+              className="input"
+              placeholder="linkedin, automation, ai"
+              value={draft.hashtags}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, hashtags: e.target.value }))
+              }
+            />
+          </div>
+
+          <div
+            className="flex gap-3"
+            style={{ justifyContent: "flex-end", marginTop: 24 }}
+          >
+            <button
+              className="btn btn-secondary"
+              onClick={() => setShowComposer(false)}
+              disabled={scheduling}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={handlePublishNow}
+              disabled={scheduling || !draft.content.trim()}
+            >
+              {scheduling ? <><RefreshCw size={14} className="animate-spin mr-1"/>...</> : <><Send size={14} className="mr-1"/> Publish Now</>}
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSchedulePost}
+              disabled={
+                scheduling || !draft.content.trim() || !draft.scheduledAt
+              }
+            >
+              {scheduling ? <><RefreshCw size={14} className="animate-spin mr-1"/> Scheduling...</> : <><Calendar size={14} className="mr-1"/> Schedule</>}
+            </button>
+          </div>
+        </Modal>
       </div>
     </>
   );

@@ -430,47 +430,77 @@ export default function Settings() {
         {activeTab === "ai" && (
           <div className="card animate-fadeIn">
             <h3 className="card-title" style={{ marginBottom: "24px" }}>
-              Ollama AI Configuration
+              AI Engine Configuration
             </h3>
 
-            <div className="flex gap-4">
-              <div className="input-group" style={{ flex: 2 }}>
-                <label className="input-label">Ollama Server URL</label>
-                <input
-                  className="input"
-                  value={settings.ai.ollamaBaseUrl}
-                  onChange={(e) =>
-                    updateSettings("ai.ollamaBaseUrl", e.target.value)
-                  }
-                  placeholder="http://35.175.238.52"
-                />
-              </div>
-              <div className="input-group" style={{ flex: 1 }}>
-                <label className="input-label">API Port</label>
-                <input
-                  type="number"
-                  className="input"
-                  value={settings.ai.ollamaApiPort}
-                  onChange={(e) =>
-                    updateSettings("ai.ollamaApiPort", parseInt(e.target.value))
-                  }
-                />
-              </div>
-              <div className="input-group" style={{ flex: 1 }}>
-                <label className="input-label">Generate Port</label>
-                <input
-                  type="number"
-                  className="input"
-                  value={settings.ai.ollamaGeneratePort}
-                  onChange={(e) =>
-                    updateSettings(
-                      "ai.ollamaGeneratePort",
-                      parseInt(e.target.value),
-                    )
-                  }
-                />
-              </div>
+            <div className="input-group" style={{ marginBottom: "20px" }}>
+              <label className="input-label">Provider</label>
+              <select
+                className="input"
+                value={settings.ai.provider || "ollama"}
+                onChange={(e) => updateSettings("ai.provider", e.target.value)}
+              >
+                <option value="nvidia">NVIDIA NIM (Recommended)</option>
+                <option value="ollama">Ollama (Local)</option>
+              </select>
             </div>
+
+            {settings.ai.provider === "nvidia" && (
+              <div className="input-group" style={{ marginBottom: "20px" }}>
+                <label className="input-label">NVIDIA API Key</label>
+                <input
+                  type="password"
+                  className="input"
+                  value={settings.ai.nvidiaApiKey || ""}
+                  onChange={(e) => updateSettings("ai.nvidiaApiKey", e.target.value)}
+                  placeholder="nvapi-..."
+                />
+                <p className="text-sm text-muted" style={{ marginTop: "8px" }}>
+                  Get your free API key at <a href="https://build.nvidia.com" target="_blank" rel="noreferrer" style={{color: "var(--accent-primary)", textDecoration: "none"}}>build.nvidia.com</a>.
+                </p>
+              </div>
+            )}
+
+            {settings.ai.provider === "ollama" && (
+              <div className="flex gap-4" style={{ marginBottom: "20px" }}>
+                <div className="input-group" style={{ flex: 2 }}>
+                  <label className="input-label">Ollama Server URL</label>
+                  <input
+                    className="input"
+                    value={settings.ai.ollamaBaseUrl}
+                    onChange={(e) =>
+                      updateSettings("ai.ollamaBaseUrl", e.target.value)
+                    }
+                    placeholder="http://35.175.238.52"
+                  />
+                </div>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label className="input-label">API Port</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={settings.ai.ollamaApiPort}
+                    onChange={(e) =>
+                      updateSettings("ai.ollamaApiPort", parseInt(e.target.value))
+                    }
+                  />
+                </div>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label className="input-label">Generate Port</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={settings.ai.ollamaGeneratePort}
+                    onChange={(e) =>
+                      updateSettings(
+                        "ai.ollamaGeneratePort",
+                        parseInt(e.target.value),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-4">
               <div className="input-group" style={{ flex: 1 }}>

@@ -30,6 +30,7 @@ Return ONLY this JSON format, nothing else:
     temperature: 0.2, // Low temp for analysis
     useFallbackModel: true, // Use faster model
     format: "json", // Instructs Ollama to output valid JSON token sequence
+    skipBrochureContext: true,
   });
 
   try {

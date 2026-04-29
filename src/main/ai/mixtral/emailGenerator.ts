@@ -34,11 +34,18 @@ ABOUT THE RECIPIENT:
 
 ABOUT THE SENDER:
 - Name: ${context.yourName}
-- Company: ${context.yourCompany}
-- Services: ${context.yourServices}
+- Company: ${context.yourCompany || 'Veda AI Lab'}
+- Services: ${context.yourServices || 'White-label AI Agents, Chatbots, Workflow Automation, Self-Hosted LLMs, ERP Intelligence'} (see knowledge base for full details)
 
 EMAIL TYPE: ${context.emailType}
 ${typeInstructions[context.emailType]}
+
+KNOWLEDGE BASE GUIDANCE (from VEDA AI LAB knowledge base):
+- SECTION 4 (Services): Reference the service category that best matches the recipient's company/role. Include a specific metric or outcome (e.g., "35% conversion boost", "99% extraction accuracy", "60% faster ticket resolution").
+- SECTION 9 (Success Stories): Include the most industry-relevant case study as a concise proof point. Focus on the outcome only.
+- SECTION 3 (Partnership Model): For intro/follow-up emails, emphasize "free scoping", "no commitment", and "rapid delivery" to reduce friction.
+- SECTION 11 (Pricing): ONLY reference pricing if email type is 'meeting_confirm'. For all others, avoid pricing entirely.
+- SECTION 8 (Security): For compliance-sensitive industries (healthcare, legal, finance, government), reference SOC 2 Type II, ISO 27001, and HIPAA compliance as relevant.
 
 RULES:
 1. Write both a subject line and body

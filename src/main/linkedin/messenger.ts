@@ -1129,11 +1129,8 @@ export async function checkLeadThreadForReply(
 }
 /**
  * Scrape ALL conversations from the LinkedIn messaging sidebar.
- * Uses the inbox browser page â€” never touches the campaign browser.
- *
- * Returns every visible conversation: name, headline, thread URL,
- * last message preview, unread count, avatar URL.
- * Scrolls the sidebar to load as many conversations as possible.
+ * Uses the inbox browser page — never touches the campaign browser.
+ * Delegates to the inboxScraper module which uses DOM-agnostic discovery.
  */
 export async function scrapeAllLinkedInConversations(
   page: import('puppeteer-core').Page,
@@ -1146,131 +1143,10 @@ export async function scrapeAllLinkedInConversations(
   lastMessageAt: string;
   unreadCount: number;
 }>> {
-  try {
-    // Ensure we are on LinkedIn (not about:blank)
-    const currentUrl = page.url();
-    if (!currentUrl.includes('linkedin.com')) {
-      await (page as any).goto('https://www.linkedin.com/messaging/', {
-        waitUntil: 'networkidle2', timeout: 30000,
-      });
-      await humanDelay(2000, 3000);
-    }
-    console.log(`[InboxScrape] Page: ${page.url()}`);
-
-    // Wait for the message list to load
-    await page.waitForSelector('.msg-conversation-listitem, .msg-conversations-list-item, [data-view-name="message-list-item"]', { timeout: 15000 }).catch(() => null);
-
-    // Scroll the sidebar to load more
-    await page.evaluate(async () => {
-      const container = document.querySelector('.msg-conversations-container__title-row')?.parentElement?.parentElement || 
-                        document.querySelector('.msg-conversations-container__conversations-list') || 
-                        document.querySelector('.msg-conversations-container__title-row')?.closest('div[id*="ember"]');
-      if (container) {
-        for (let i = 0; i < 5; i++) {
-          container.scrollTop = container.scrollHeight;
-          await new Promise(r => setTimeout(r, 800));
-        }
-      }
-    });
-
-    const conversations = await page.evaluate(() => {
-      const results: Array<any> = [];
-      const itemSelectors = [
-        ".msg-conversation-listitem",
-        ".msg-conversations-list-item",
-        "[data-view-name='message-list-item']",
-      ];
-
-      let items: NodeListOf<Element> | null = null;
-      for (const sel of itemSelectors) {
-        const found = document.querySelectorAll(sel);
-        if (found.length > 0) { items = found; break; }
-      }
-
-      if (!items) return [];
-
-      items.forEach((item) => {
-        // Name
-        const nameEl =
-          item.querySelector(".msg-conversation-card__participant-names") ||
-          item.querySelector("[class*='participant-names']") ||
-          item.querySelector("h3");
-        let name = nameEl?.textContent?.trim() || "Unknown";
-        name = name.split('\n')[0].trim(); // Take first line to avoid extra badges
-
-        // Headline
-        const headline = "";
-
-        // Avatar
-        const imgEl = item.querySelector('img');
-        const avatarUrl = imgEl?.src || "";
-
-        // Thread URL
-        const threadLinkEl = item.querySelector("a[href*='/messaging/thread/']") as HTMLAnchorElement | null;
-        let threadUrl = threadLinkEl?.href || (item.querySelector("a") as HTMLAnchorElement | null)?.href || "";
-        
-        // Handle relative URLs
-        if (threadUrl && threadUrl.startsWith('/')) {
-            threadUrl = 'https://www.linkedin.com' + threadUrl;
-        }
-
-        // Last Message
-        const messageEl =
-          item.querySelector(".msg-conversation-card__message-snippet") ||
-          item.querySelector("[class*='message-snippet']") ||
-          item.querySelector("p");
-        const lastMessage = messageEl?.textContent?.trim() || "";
-
-        // Unread Count
-        const countEl =
-          item.querySelector(".msg-conversation-card__unread-count") ||
-          item.querySelector(".notification-badge");
-          
-        let unreadCount = 0;
-        if (countEl) {
-           unreadCount = parseInt(countEl.textContent?.trim() || "1") || 1;
-        } else if (
-          item.classList.contains("msg-conversation-listitem--unread") ||
-          item.classList.contains("msg-conversations-list-item--unread")
-        ) {
-           unreadCount = 1;
-        }
-
-        // Last Message At
-        const timeEl = item.querySelector('time');
-        const timeStr = timeEl?.textContent?.trim() || '';
-        const lastMessageAt = timeStr ? new Date().toISOString() : '';
-
-        if (threadUrl && name !== 'Unknown') {
-          results.push({
-            name,
-            headline,
-            avatarUrl,
-            threadUrl,
-            lastMessage: lastMessage.slice(0, 200),
-            lastMessageAt,
-            unreadCount
-          });
-        }
-      });
-      return results;
-    });
-
-    const deduped = conversations.filter((c, idx, arr) =>
-      arr.findIndex(x => x.threadUrl === c.threadUrl) === idx
-    );
-
-    logActivity('inbox_sidebar_scraped', 'inbox', { count: deduped.length });
-    console.log(`[InboxScrape] Scraped ${deduped.length} conversations via DOM scraping.`);
-    return deduped;
-
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    logActivity('inbox_sidebar_scrape_failed', 'inbox', { error: msg }, 'error', msg);
-    console.error('[InboxScrape] Failed:', msg);
-    return [];
-  }
+  const { scrapeInboxConversations } = await import('./inboxScraper');
+  return scrapeInboxConversations(page as any);
 }
+
 
 
 /**

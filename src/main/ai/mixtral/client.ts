@@ -1,5 +1,6 @@
 import type { AppSettings } from "../../../shared/types";
 import { logActivity } from "../../storage/database";
+import { VEDA_CONTEXT } from "./brochureContext";
 
 interface OllamaResponse {
   model: string;
@@ -33,6 +34,7 @@ export async function generateWithOllama(
     maxTokens?: number;
     temperature?: number;
     format?: string; // Optional JSON toggle
+    skipBrochureContext?: boolean; // Skip for internal parsing tasks
   } = {},
 ): Promise<string> {
   const model = options.useFallbackModel
@@ -44,46 +46,118 @@ export async function generateWithOllama(
   const port = settings.ollamaApiPort;
   const url = `${baseUrl}:${port}/api/generate`;
 
-  const body: OllamaGenerateRequest = {
-    model,
-    prompt,
-    stream: false,
-    options: {
-      temperature: options.temperature ?? settings.temperature,
-      num_predict: options.maxTokens ?? settings.maxTokens,
-      top_p: 0.9,
-      top_k: 40,
-    },
-  };
-  
-  if (options.format) {
-    body.format = options.format;
+  let finalPrompt = prompt;
+  if (!options.skipBrochureContext) {
+    finalPrompt = [
+      `=== VEDA AI LAB — COMPLETE COMPANY KNOWLEDGE BASE ===`,
+      ``,
+      VEDA_CONTEXT,
+      ``,
+      `=== END OF KNOWLEDGE BASE ===`,
+      ``,
+      `CRITICAL INSTRUCTIONS FOR THIS TASK:`,
+      `1. You represent Veda AI Lab. ALL outreach and responses MUST align precisely with the knowledge base above.`,
+      `2. Reference SPECIFIC services, quantified metrics, case studies, and tech stack details from the knowledge base when they are relevant to the lead.`,
+      `3. Match the professional, confident, peer-level tone of the partnership model — advisor, not vendor.`,
+      `4. NEVER invent, guess, or extrapolate services, pricing, or capabilities not explicitly stated in the knowledge base.`,
+      `5. Adapt the sections you draw from based on the lead's industry, role, and company — use the most relevant service category and success story.`,
+      `6. Pricing should ONLY be mentioned if the lead explicitly asks. Otherwise, focus on outcomes and value.`,
+      ``,
+      `---`,
+      ``,
+      prompt,
+    ].join("\n");
   }
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    if (settings.provider === "nvidia") {
+      if (!settings.nvidiaApiKey) {
+        throw new Error("NVIDIA API Key is missing. Please configure it in Settings.");
+      }
 
-    if (!response.ok) {
-      throw new Error(
-        `Ollama API error: ${response.status} ${response.statusText}`,
-      );
-    }
+      const nvidiaUrl = "https://integrate.api.nvidia.com/v1/chat/completions";
+      const messages = [{ role: "user", content: finalPrompt }];
+      
+      const nvidiaBody: any = {
+        model,
+        messages,
+        temperature: options.temperature ?? settings.temperature,
+        max_tokens: options.maxTokens ?? settings.maxTokens,
+        top_p: 0.9,
+      };
 
-    const data = (await response.json()) as OllamaResponse;
-    if (data && data.response) {
-      return data.response.trim();
+      if (options.format === "json") {
+         // Optionally you can inject JSON instructions or use response_format if the model supports it.
+         // Some models error if you pass response_format without "json" in the prompt, so we skip response_format here
+         // and rely on the prompt instructing it to output JSON.
+      }
+
+      const response = await fetch(nvidiaUrl, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${settings.nvidiaApiKey}`,
+        },
+        body: JSON.stringify(nvidiaBody),
+      });
+
+      if (!response.ok) {
+        let errorText = response.statusText;
+        try {
+          const errData = await response.json();
+          if (errData.error?.message) errorText = errData.error.message;
+        } catch(e) {}
+        throw new Error(`NVIDIA API error: ${response.status} ${errorText}`);
+      }
+
+      const data = await response.json();
+      if (data && data.choices && data.choices.length > 0) {
+        return data.choices[0].message.content.trim();
+      }
+      throw new Error("Invalid response missing key 'choices'.");
+
+    } else {
+      // --- OLLAMA LOGIC ---
+      const body: OllamaGenerateRequest = {
+        model,
+        prompt: finalPrompt,
+        stream: false,
+        options: {
+          temperature: options.temperature ?? settings.temperature,
+          num_predict: options.maxTokens ?? settings.maxTokens,
+          top_p: 0.9,
+          top_k: 40,
+        },
+      };
+      
+      if (options.format) {
+        body.format = options.format;
+      }
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Ollama API error: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      const data = (await response.json()) as OllamaResponse;
+      if (data && data.response) {
+        return data.response.trim();
+      }
+      throw new Error("Invalid response missing key 'response'.");
     }
-    throw new Error("Invalid response missing key 'response'.");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     logActivity(
       "ai_generate_failed",
       "ai",
-      { model, error: message },
+      { model, provider: settings.provider, error: message },
       "error",
       message,
     );

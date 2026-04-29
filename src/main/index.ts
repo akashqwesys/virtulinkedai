@@ -1402,6 +1402,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
           name = excluded.name,
           headline = excluded.headline,
           avatar_url = excluded.avatar_url,
+          thread_url = CASE WHEN excluded.thread_url != '' THEN excluded.thread_url ELSE inbox_contacts.thread_url END,
           last_message = excluded.last_message,
           last_message_at = excluded.last_message_at,
           unread_count = excluded.unread_count,
@@ -1413,8 +1414,9 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
       db.transaction(() => {
         for (const conv of conversations) {
-          // Use thread URL as stable ID key (hash it)
-          const id = Buffer.from(conv.threadUrl).toString('base64').slice(0, 40);
+          // Use thread URL as stable ID key, fallback to name-based ID
+          const idSource = conv.threadUrl || conv.name || `unknown-${Date.now()}`;
+          const id = Buffer.from(idSource).toString('base64').slice(0, 40);
           const existingLead = matchLead.get(`%${conv.name}%`) as any;
           upsert.run(
             id, conv.name, conv.headline, conv.avatarUrl, conv.threadUrl,
@@ -1552,16 +1554,374 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   // Sync a lead's thread from LinkedIn using the inbox browser
+  // Works with both leads and inbox_contacts (scraped from sidebar)
   ipcMain.removeHandler(IPC_CHANNELS.INBOX_SYNC_THREAD);
-  ipcMain.handle(IPC_CHANNELS.INBOX_SYNC_THREAD, async (_event, leadId: string) => {
+  ipcMain.handle(IPC_CHANNELS.INBOX_SYNC_THREAD, async (_event, contactId: string) => {
     try {
       const db = getDatabase();
-      const lead = db.prepare('SELECT first_name, last_name FROM leads WHERE id = ?').get(leadId) as any;
-      if (!lead) return { success: false, error: 'Lead not found', messages: [] };
 
-      const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown';
-      const inboxPage = await getInboxPage(); // singleton — launches once
-      const messages = await scrapeAndSaveThread(leadId, fullName, inboxPage);
+      // Try leads table first, then inbox_contacts
+      let fullName = '';
+      let threadUrl = '';
+      let resolvedLeadId = contactId;
+
+      const lead = db.prepare('SELECT first_name, last_name, thread_url FROM leads WHERE id = ?').get(contactId) as any;
+      if (lead) {
+        fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim();
+        threadUrl = lead.thread_url || '';
+      }
+
+      if (!fullName) {
+        const contact = db.prepare('SELECT name, thread_url, lead_id, avatar_url FROM inbox_contacts WHERE id = ?').get(contactId) as any;
+        if (contact) {
+          fullName = contact.name || '';
+          threadUrl = contact.thread_url || '';
+          if (contact.lead_id) {
+            resolvedLeadId = contact.lead_id;
+          } else {
+            // Auto-create a lead record for this inbox contact (FK requirement)
+            const nameParts = (contact.name || '').trim().split(' ');
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+            const newLeadId = uuidv4();
+            db.prepare(`
+              INSERT OR IGNORE INTO leads (id, linkedin_url, first_name, last_name, profile_image_url, thread_url, status, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              newLeadId,
+              contact.thread_url || `inbox-contact-${contactId}`,
+              firstName, lastName,
+              contact.avatar_url || '',
+              contact.thread_url || '',
+              'in_conversation',
+              new Date().toISOString(),
+              new Date().toISOString()
+            );
+            // Link inbox contact to this new lead
+            db.prepare('UPDATE inbox_contacts SET lead_id = ? WHERE id = ?').run(newLeadId, contactId);
+            resolvedLeadId = newLeadId;
+            console.log(`[InboxSync] Auto-created lead for "${fullName}" (${newLeadId})`);
+          }
+        }
+      }
+
+      if (!fullName && !threadUrl) {
+        return { success: false, error: 'Contact not found', messages: [] };
+      }
+
+      // Verify lead exists (for FK safety)
+      const leadExists = db.prepare('SELECT id FROM leads WHERE id = ?').get(resolvedLeadId);
+      if (!leadExists) {
+        const nameParts = fullName.trim().split(' ');
+        db.prepare(`
+          INSERT OR IGNORE INTO leads (id, linkedin_url, first_name, last_name, thread_url, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(resolvedLeadId, threadUrl || `inbox-${resolvedLeadId}`, nameParts[0] || '', nameParts.slice(1).join(' ') || '', threadUrl, 'in_conversation', new Date().toISOString(), new Date().toISOString());
+        console.log(`[InboxSync] Created lead record for FK safety: ${resolvedLeadId}`);
+      }
+
+      const inboxPage = await getInboxPage();
+
+      // Navigate directly to thread URL if available (much more reliable than search)
+      if (threadUrl && threadUrl.includes('/messaging/')) {
+        console.log(`[InboxSync] Navigating directly to thread: ${threadUrl}`);
+        try {
+          await (inboxPage as any).goto(threadUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        } catch {
+          // networkidle2 may timeout — page is still usable
+        }
+        await new Promise(r => setTimeout(r, 2500));
+        // First: Dump DOM structure for debugging
+        const domDebug = await inboxPage.evaluate(() => {
+          const lines: string[] = [];
+          
+          // Find the message list container
+          const containers = document.querySelectorAll('[class*="msg-s-message-list"], [class*="message-list"]');
+          lines.push(`=== Message list containers found: ${containers.length} ===`);
+          containers.forEach((c, i) => {
+            lines.push(`Container ${i}: tag=${c.tagName} class="${(c.className || '').toString().substring(0, 120)}"`);
+            lines.push(`  Direct children: ${c.children.length}`);
+            Array.from(c.children).slice(0, 15).forEach((child, j) => {
+              const cls = (child.className || '').toString().substring(0, 100);
+              const tag = child.tagName;
+              const timeEl = child.querySelector('time');
+              const timeInfo = timeEl ? `datetime="${timeEl.getAttribute('datetime')}" text="${timeEl.textContent?.trim()}"` : 'no-time';
+              const nameEl = child.querySelector('[class*="name"]');
+              const nameInfo = nameEl ? `name="${nameEl.textContent?.trim()}"` : '';
+              const bodyEl = child.querySelector('[class*="body"], [class*="content"]');
+              const pTags = child.querySelectorAll('p');
+              const pTexts = Array.from(pTags).map(p => p.textContent?.trim().substring(0, 50)).filter(t => t);
+              lines.push(`  [${j}] <${tag}> class="${cls}" ${timeInfo} ${nameInfo}`);
+              lines.push(`       p-tags(${pTags.length}): ${pTexts.join(' | ')}`);
+              
+              // Also check nested li/div
+              const nested = child.querySelectorAll('li, [class*="event"]');
+              if (nested.length > 0) {
+                lines.push(`       nested-items: ${nested.length}`);
+                nested.forEach((n, k) => {
+                  if (k > 5) return;
+                  const nCls = (n.className || '').toString().substring(0, 80);
+                  const nTime = n.querySelector('time');
+                  const nTimeInfo = nTime ? `time="${nTime.getAttribute('datetime') || nTime.textContent?.trim()}"` : '';
+                  const nPs = n.querySelectorAll('p');
+                  const nPTexts = Array.from(nPs).map(p => p.textContent?.trim().substring(0, 40)).filter(t => t);
+                  lines.push(`         [${k}] class="${nCls}" ${nTimeInfo} p: ${nPTexts.join(' | ')}`);
+                });
+              }
+            });
+          });
+
+          // Also check for msg-s-message-group elements
+          const groups = document.querySelectorAll('[class*="msg-s-message-group"]');
+          lines.push(`\n=== Message groups found: ${groups.length} ===`);
+          groups.forEach((g, i) => {
+            if (i > 10) return;
+            const cls = (g.className || '').toString().substring(0, 100);
+            const nameEl = g.querySelector('[class*="name"]');
+            lines.push(`Group ${i}: class="${cls}" name="${nameEl?.textContent?.trim() || 'none'}"`);
+          });
+
+          return lines.join('\n');
+        });
+        console.log('[InboxSync DOM Dump]\n' + domDebug);
+
+        // Scrape messages from the open thread
+        const rawMessages = await inboxPage.evaluate((leadName: string) => {
+          const msgs: Array<{ sender: string; text: string; timestamp: string; isMe: boolean; domIndex: number }> = [];
+          let domIdx = 0;
+
+          // Junk filter
+          const junkPatterns = ['open emoji keyboard', 'emoji keyboard', 'react with', 'add reaction',
+            'more options', 'reply', 'forward', 'delete', 'report', 'see translation'];
+          function isJunk(text: string): boolean {
+            const lower = text.toLowerCase();
+            return junkPatterns.some(p => lower.includes(p)) || /^[\s👏👍😊😂❤️🔥💯🎉👎😢😮🙏]+$/.test(text);
+          }
+          function cleanText(text: string): string {
+            return text.replace(/^[\s👏👍😊😂❤️🔥💯🎉👎😢😮🙏]+\s*(Open Emoji Keyboard\s*)?/gi, '')
+              .replace(/\s*Open Emoji Keyboard\s*/gi, '').trim();
+          }
+
+          // Parse "Apr 14" or "APR 14" into a date string
+          function parseDateHeading(text: string): string {
+            // "Apr 14" → "Apr 14, <current year>"
+            const cleaned = text.trim();
+            const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+            const parts = cleaned.split(/[\s,]+/);
+            if (parts.length >= 2) {
+              const monthPart = parts[0].toLowerCase().substring(0, 3);
+              if (months.includes(monthPart)) {
+                return cleaned; // e.g. "Apr 14"
+              }
+            }
+            return '';
+          }
+
+          // Combine date "Apr 14" + time "2:25 PM" into ISO string
+          function buildISO(dateStr: string, timeStr: string): string {
+            const year = new Date().getFullYear();
+            // Try parsing "Apr 14, <year> 2:25 PM"
+            const combined = `${dateStr}, ${year} ${timeStr}`;
+            const d = new Date(combined);
+            if (!isNaN(d.getTime())) {
+              // If future date, use last year
+              if (d.getTime() > Date.now()) d.setFullYear(year - 1);
+              return d.toISOString();
+            }
+            // Fallback: just try the time with today's date
+            const today = new Date();
+            const timeOnly = new Date(`${today.toDateString()} ${timeStr}`);
+            if (!isNaN(timeOnly.getTime())) return timeOnly.toISOString();
+            return new Date().toISOString();
+          }
+
+          // Get logged-in user's name
+          let myName = '';
+          const navImg = document.querySelector('[class*="global-nav__me"] img[alt]');
+          if (navImg) myName = (navImg.getAttribute('alt') || '').trim();
+
+          // Find the correct message list (the one with "msg-s-message-list-content")
+          const msgListContainer = document.querySelector('.msg-s-message-list-content') ||
+            document.querySelector('[class*="msg-s-message-list-content"]') ||
+            document.querySelector('[class*="msg-s-message-list"]');
+
+          if (!msgListContainer) {
+            console.log('[DOM] No message list container found');
+            return msgs;
+          }
+
+          // Get direct LI children only (these are msg-s-message-list__event items)
+          const eventLIs = Array.from(msgListContainer.querySelectorAll(':scope > li.msg-s-message-list__event'));
+          console.log('[DOM] Found', eventLIs.length, 'direct event LIs');
+
+          // If that didn't work, try all direct li children that have p tags
+          let eventItems = eventLIs.length > 0 ? eventLIs : 
+            Array.from(msgListContainer.children).filter(el => 
+              el.tagName === 'LI' && el.classList.contains('msg-s-message-list__event')
+            );
+
+          // Track rolling date context from date headings
+          let currentDateStr = '';  // e.g. "Apr 14"
+          let currentSender = '';
+          let currentIsMe = false;
+
+          for (const item of eventItems) {
+            // Check for date heading <TIME class="msg-s-message-list__time-heading">
+            const dateHeading = item.querySelector('.msg-s-message-list__time-heading, time.msg-s-message-list__time-heading');
+            if (dateHeading) {
+              const headingText = (dateHeading.textContent || '').trim();
+              const parsed = parseDateHeading(headingText);
+              if (parsed) {
+                currentDateStr = parsed;
+                console.log('[DOM] Date heading:', currentDateStr);
+              }
+            }
+
+            // Check for sender name
+            const nameEl = item.querySelector('[class*="message-group__name"]');
+            if (nameEl) {
+              currentSender = (nameEl.textContent || '').trim();
+              // Determine direction
+              const isMeClass = (item.className || '').includes('is-me') ||
+                !!item.closest('[class*="is-me"]');
+              if (isMeClass) {
+                currentIsMe = true;
+              } else if (leadName && currentSender) {
+                const sL = currentSender.toLowerCase();
+                const lL = leadName.toLowerCase();
+                const lFirst = lL.split(' ')[0];
+                currentIsMe = !(sL.includes(lL) || lL.includes(sL) || 
+                  (lFirst.length > 2 && sL.includes(lFirst)));
+                if (myName && !currentIsMe) {
+                  const mL = myName.toLowerCase();
+                  if (sL.includes(mL) || mL.includes(sL)) currentIsMe = true;
+                }
+              } else {
+                currentIsMe = isMeClass;
+              }
+            }
+
+            // Get message body — look for msg-s-event-listitem__message-bubble
+            const bubble = item.querySelector('.msg-s-event-listitem__message-bubble, [class*="message-bubble"]');
+            if (!bubble) continue;
+
+            const paragraphs = bubble.querySelectorAll('p');
+            if (paragraphs.length === 0) continue;
+
+            const textParts: string[] = [];
+            paragraphs.forEach(p => {
+              if (p.closest('button') || p.closest('[class*="reaction"]') ||
+                  p.closest('[class*="toolbar"]') || p.closest('[class*="emoji"]') ||
+                  p.closest('[class*="quick-reply"]') || p.closest('[class*="actions"]')) return;
+              const t = (p.textContent || '').trim();
+              if (t && t.length > 0) textParts.push(t);
+            });
+
+            let messageText = textParts.join('\n').trim();
+            messageText = cleanText(messageText);
+            if (!messageText || messageText.length < 1 || isJunk(messageText)) continue;
+
+            // Get timestamp from the inner msg-s-event-listitem's <time> (the per-message time)
+            const innerEventItem = item.querySelector('.msg-s-event-listitem, [class*="msg-s-event-listitem"]');
+            const timeEl = innerEventItem?.querySelector('time') || item.querySelector('time:not(.msg-s-message-list__time-heading)');
+            let messageTime = '';
+            if (timeEl) {
+              // Try datetime attribute first
+              const dtAttr = timeEl.getAttribute('datetime');
+              if (dtAttr && dtAttr !== 'null' && dtAttr.includes('T')) {
+                messageTime = dtAttr; // Already ISO
+              } else {
+                messageTime = (timeEl.textContent || '').trim(); // "2:25 PM"
+              }
+            }
+
+            // Build proper ISO timestamp
+            let timestamp = '';
+            if (messageTime.includes('T')) {
+              // Already ISO format
+              timestamp = messageTime;
+            } else if (messageTime && currentDateStr) {
+              // Combine date heading + message time: "Apr 14" + "2:25 PM"
+              timestamp = buildISO(currentDateStr, messageTime);
+            } else if (messageTime) {
+              // Time only, use today
+              timestamp = buildISO(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), messageTime);
+            } else {
+              timestamp = new Date().toISOString();
+            }
+
+            msgs.push({
+              sender: currentSender || (currentIsMe ? 'You' : leadName || 'Unknown'),
+              text: messageText,
+              timestamp,
+              isMe: currentIsMe,
+              domIndex: domIdx++,
+            });
+          }
+
+          // Deduplicate
+          const seen = new Set<string>();
+          return msgs.filter(m => {
+            const key = m.text.toLowerCase().replace(/\s+/g, ' ').trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        }, fullName);
+
+        console.log(`[InboxSync] Extracted ${rawMessages.length} messages from thread.`);
+        for (const m of rawMessages) {
+          console.log(`  [${m.isMe ? 'YOU' : 'LEAD'}] (dom:${m.domIndex}) ${m.sender}: "${m.text.substring(0, 50)}" @ ${m.timestamp}`);
+        }
+
+        // Clear existing linkedin messages for this lead and re-insert in DOM order
+        db.prepare("DELETE FROM conversations WHERE lead_id = ? AND platform = 'linkedin'").run(resolvedLeadId);
+
+        // Sort by DOM index (the order they appear on LinkedIn = chronological order)
+        const sorted = [...rawMessages].sort((a, b) => a.domIndex - b.domIndex);
+
+        let insertedCount = 0;
+        const seenTexts = new Set<string>();
+        for (let i = 0; i < sorted.length; i++) {
+          const msg = sorted[i];
+          if (seenTexts.has(msg.text)) continue;
+          seenTexts.add(msg.text);
+          const direction = msg.isMe ? 'outbound' : 'inbound';
+          // Use DOM order index as a suffix to ensure correct chronological sort in DB
+          // Base time from the timestamp, with index as millisecond offset for ordering
+          let sentAt = msg.timestamp;
+          try {
+            const d = new Date(sentAt);
+            if (!isNaN(d.getTime())) {
+              // If year is wrong (< 2020), fix it
+              if (d.getFullYear() < 2020) d.setFullYear(new Date().getFullYear());
+              // Add the dom index as milliseconds to ensure stable ordering
+              d.setMilliseconds(i);
+              sentAt = d.toISOString();
+            }
+          } catch {}
+          db.prepare(`
+            INSERT INTO conversations (id, lead_id, direction, content, platform, is_automated, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(uuidv4(), resolvedLeadId, direction, msg.text, 'linkedin', 0, sentAt);
+          insertedCount++;
+        }
+
+        console.log(`[InboxSync] Saved ${insertedCount} new messages for "${fullName}".`);
+
+        // Return all messages from DB
+        const messages = db.prepare(
+          "SELECT id, lead_id, direction, content, platform, is_automated, sent_at FROM conversations WHERE lead_id = ? ORDER BY sent_at ASC"
+        ).all(resolvedLeadId).map((r: any) => ({
+          id: r.id, leadId: r.lead_id, direction: r.direction, content: r.content,
+          platform: r.platform, isAutomated: !!r.is_automated, sentAt: r.sent_at,
+        }));
+
+        return { success: true, messages };
+      }
+
+      // Fallback: use name-based search (old method)
+      const messages = await scrapeAndSaveThread(resolvedLeadId, fullName, inboxPage);
       return { success: true, messages };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Sync failed', messages: [] };
@@ -1698,7 +2058,95 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
       return { success: false, error: err?.message || 'Poll failed', count: 0 };
     }
   });
+
+  // ---- AI Reply Generation for Inbox ----
+  ipcMain.removeHandler(IPC_CHANNELS.INBOX_AI_REPLY);
+  ipcMain.handle(
+    IPC_CHANNELS.INBOX_AI_REPLY,
+    async (_event, data: { leadId: string }) => {
+      try {
+        const db = getDatabase();
+        const settings = getSettingsStore().get('settings');
+
+        // Fetch lead profile
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(data.leadId) as any;
+
+        // Fetch all messages for context (most recent 30 to stay within token limits)
+        const rawMsgs = db.prepare(
+          `SELECT direction, content, sent_at FROM conversations
+           WHERE lead_id = ?
+           ORDER BY sent_at ASC
+           LIMIT 30`
+        ).all(data.leadId) as any[];
+
+        // Also check inbox_contacts if no lead row (pure inbox contact)
+        let leadName = '';
+        let leadHeadline = '';
+        let leadCompany = '';
+        if (lead) {
+          leadName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim();
+          leadHeadline = lead.headline || '';
+          leadCompany = lead.company || '';
+        } else {
+          // Try inbox_contacts
+          const contact = db.prepare('SELECT name, headline FROM inbox_contacts WHERE id = ?').get(data.leadId) as any;
+          if (contact) {
+            leadName = contact.name || '';
+            leadHeadline = contact.headline || '';
+          }
+        }
+
+        // Build conversation transcript
+        const transcript = rawMsgs.length > 0
+          ? rawMsgs.map(m => `[${m.direction === 'outbound' ? 'You (Veda AI Lab)' : leadName || 'Lead'}]: ${m.content}`).join('\n')
+          : '(No messages yet — this is the first message in the conversation.)';
+
+        // Compose the prompt — no system prompt injection needed, generateWithOllama prepends VEDA_CONTEXT automatically
+        const prompt = `
+You are a professional outreach specialist representing Veda AI Lab. Your goal is to write the NEXT best LinkedIn message to send to this lead.
+
+LEAD INFORMATION:
+- Name: ${leadName || 'Unknown'}
+- Headline: ${leadHeadline || 'N/A'}
+- Company: ${leadCompany || 'N/A'}
+
+FULL CONVERSATION HISTORY:
+${transcript}
+
+TASK:
+Based on the conversation context above and the Veda AI Lab knowledge base (see system context), write the single best next reply message.
+
+GUIDELINES:
+- Keep it concise (2-4 sentences max), natural and human — not salesy or robotic
+- Continue naturally from the last message — don't repeat what was already said
+- Align with the lead's interest/context (their role, company, what they've asked)
+- Subtly position Veda AI Lab's relevant service if appropriate, but don't force it
+- NO subject line. NO greeting like "Hi [Name]," — just the message body
+- Do NOT include any explanation, preamble, or meta-commentary — output ONLY the message text
+
+Write the reply now:`.trim();
+
+        const { generateWithOllama } = await import('./ai/mixtral/client');
+        const reply = await generateWithOllama(prompt, settings.ai, {
+          maxTokens: 300,
+          temperature: 0.75,
+        });
+
+        // Strip any meta prefixes like "Reply:", "Message:", quotes, etc.
+        const clean = reply
+          .replace(/^(reply|message|response|here is|here's|draft)[:\s]+/i, '')
+          .replace(/^["']|["']$/g, '')
+          .trim();
+
+        return { success: true, reply: clean };
+      } catch (err: any) {
+        console.error('[INBOX_AI_REPLY] Failed:', err?.message);
+        return { success: false, error: err?.message || 'AI generation failed' };
+      }
+    }
+  );
 }
+
 
 // ============================================================
 // App Lifecycle

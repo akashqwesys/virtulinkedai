@@ -4,6 +4,7 @@ import {
   Search, Eye, UserPlus, MessageSquare, Mail, AlertTriangle, 
   Download, Bot, User, CheckCircle2, XCircle
 } from "lucide-react";
+import Modal from "../components/Modal";
 
 interface CampaignStep {
   id: string;
@@ -956,7 +957,7 @@ export default function Campaigns() {
                     minWidth: "240px",
                     display: "flex",
                     flexDirection: "column",
-                    background: "rgba(255, 255, 255, 0.02)",
+                    background: "var(--bg-glass)",
                     borderRadius: "12px",
                     padding: "12px",
                     border: "1px solid var(--border-subtle)",
@@ -983,11 +984,11 @@ export default function Campaigns() {
                           borderRadius: "12px",
                           cursor: "pointer",
                           transition: "all 0.2s",
-                          backgroundColor: prioritizedSection === col.id ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                          backgroundColor: prioritizedSection === col.id ? "var(--accent-primary-glow)" : "transparent",
                           color: prioritizedSection === col.id ? "var(--accent-primary)" : "var(--text-muted)",
                           border: `1px solid ${prioritizedSection === col.id ? "var(--accent-primary)" : "transparent"}`,
                         }}
-                        onMouseOver={(e) => { if (prioritizedSection !== col.id) e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                        onMouseOver={(e) => { if (prioritizedSection !== col.id) e.currentTarget.style.background = "var(--bg-elevated)"; }}
                         onMouseOut={(e) => { if (prioritizedSection !== col.id) e.currentTarget.style.background = "transparent"; }}
                         title={prioritizedSection === col.id ? "Disable Priority" : "Prioritize this section"}
                       >
@@ -1049,8 +1050,8 @@ export default function Campaigns() {
                               letterSpacing: "0.5px",
                               padding: "3px 6px",
                               borderRadius: "6px",
-                              background: "rgba(255,255,255,0.06)",
-                              border: "1px solid rgba(255,255,255,0.1)",
+                              background: "var(--bg-elevated)",
+                              border: "1px solid var(--border-subtle)",
                               color: "var(--text-muted)"
                             }}
                           >
@@ -1062,7 +1063,7 @@ export default function Campaigns() {
                     {colLeads.length === 0 && (
                       <div
                         className="text-center text-sm py-12 rounded-xl text-muted font-medium"
-                        style={{ border: "1px dashed var(--border-subtle)", background: "rgba(0,0,0,0.15)" }}
+                        style={{ border: "1px dashed var(--border-subtle)", background: "var(--bg-tertiary)" }}
                       >
                         No leads in {col.name}
                       </div>
@@ -1133,38 +1134,13 @@ export default function Campaigns() {
 
       {/* Import Profiles Modal */}
       {showImportModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            backdropFilter: "blur(4px)",
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget && !isImporting) { setShowImportModal(false); setImportResult(null); } }}
+        <Modal
+          isOpen={showImportModal}
+          onClose={() => { setShowImportModal(false); setImportResult(null); }}
+          title="Import Leads"
+          icon={<Download size={20} />}
+          disableClose={isImporting}
         >
-          <div
-            style={{
-              background: "var(--bg-card)",
-              borderRadius: "16px",
-              padding: "28px",
-              width: "min(580px, 92vw)",
-              boxShadow: "0 24px 64px rgba(0,0,0,0.45)",
-              border: "1px solid var(--border-subtle)",
-            }}
-          >
-            {/* Modal Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-              <h3 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}><Download size={20} /> Import Leads</h3>
-              <button
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
-                onClick={() => { setShowImportModal(false); setImportResult(null); }}
-                disabled={isImporting}
-              ><XCircle size={20}/></button>
-            </div>
 
             {/* Mode Toggle */}
             <div style={{ display: "flex", gap: "6px", marginBottom: "20px", background: "var(--bg-elevated)", padding: "4px", borderRadius: "10px" }}>
@@ -1267,43 +1243,19 @@ export default function Campaigns() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Lead Summary Modal */}
       {selectedLead && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            backdropFilter: "blur(4px)",
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget && !isRemovingLead) setSelectedLead(null); }}
+        <Modal
+          isOpen={!!selectedLead}
+          onClose={() => setSelectedLead(null)}
+          title="Lead Summary"
+          icon={<User size={20} />}
+          width="min(400px, 92vw)"
+          disableClose={isRemovingLead}
         >
-          <div
-            style={{
-              background: "var(--bg-card)",
-              borderRadius: "16px",
-              padding: "24px",
-              width: "min(400px, 92vw)",
-              boxShadow: "0 24px 64px rgba(0,0,0,0.45)",
-              border: "1px solid var(--border-subtle)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <h3 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}><User size={20}/> Lead Summary</h3>
-              <button
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
-                onClick={() => setSelectedLead(null)}
-                disabled={isRemovingLead}
-              ><XCircle size={20}/></button>
-            </div>
             
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
               <div>
@@ -1412,8 +1364,7 @@ export default function Campaigns() {
                 Close
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
     </div>

@@ -161,5 +161,6 @@ contextBridge.exposeInMainWorld("api", {
     scheduleMeeting: createIpcInvoke(IPC_CHANNELS.INBOX_SCHEDULE_MEETING),
     pollUnread: createIpcInvoke(IPC_CHANNELS.INBOX_POLL_UNREAD),
     scrapeAll: createIpcInvoke('inbox:scrape-all'),
+    generateAiReply: createIpcInvoke(IPC_CHANNELS.INBOX_AI_REPLY),
   },
 });

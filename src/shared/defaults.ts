@@ -25,12 +25,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
 
   ai: {
-    provider: "ollama",
-    ollamaBaseUrl: "http://35.175.238.52",
+    provider: "nvidia",
+    ollamaBaseUrl: "http://localhost",
     ollamaApiPort: 11434,
     ollamaGeneratePort: 8080,
-    primaryModel: "mixtral:8x7b-instruct-v0.1-q3_K_M",
-    fallbackModel: "mistral:7b-instruct-v0.3-q4_K_M",
+    nvidiaApiKey: "", // User will need to enter this in settings
+    primaryModel: "meta/llama-3.3-70b-instruct",
+    fallbackModel: "meta/llama-3.1-8b-instruct",
     temperature: 0.7,
     maxTokens: 512,
   },

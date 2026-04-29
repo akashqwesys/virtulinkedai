@@ -164,8 +164,8 @@ async function _doLaunch(): Promise<Page> {
 
     // Navigate to LinkedIn messaging to start
     await _inboxPage.goto("https://www.linkedin.com/messaging/", {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
+      waitUntil: "networkidle2",
+      timeout: 45000,
     });
 
     _status = "running";

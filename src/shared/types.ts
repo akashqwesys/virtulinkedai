@@ -231,12 +231,13 @@ export interface AppSettings {
 
   // AI Provider
   ai: {
-    provider: "ollama";
+    provider: "ollama" | "nvidia";
     ollamaBaseUrl: string; // e.g., http://35.175.238.52
     ollamaApiPort: number; // 11434
     ollamaGeneratePort: number; // 8080
-    primaryModel: string; // mixtral:8x7b-instruct-v0.1-q3_K_M
-    fallbackModel: string; // mistral:7b-instruct-v0.3-q4_K_M
+    nvidiaApiKey?: string; // NVIDIA API Key for build.nvidia.com
+    primaryModel: string; // mixtral:8x7b-instruct-v0.1-q3_K_M or meta/llama-3.1-70b-instruct
+    fallbackModel: string; // mistral:7b-instruct-v0.3-q4_K_M or meta/llama-3.1-8b-instruct
     temperature: number;
     maxTokens: number;
   };
@@ -386,6 +387,7 @@ export const IPC_CHANNELS = {
   INBOX_POLL_UNREAD: "inbox:poll-unread",
   INBOX_BROWSER_STATUS: "inbox:browser-status",
   INBOX_NEW_MESSAGE: "inbox:new-message",
+  INBOX_AI_REPLY: "inbox:ai-reply",
 
   // General
   APP_READY: "app:ready",
