@@ -96,12 +96,13 @@ STRICT RULES (BREAKING THESE IS A FAILURE):
 3. NO CLICHÉS: Never use "I came across your profile", "I noticed", "I'd love to connect", "As a fellow professional", "Great to see".
 4. SUBTLETY: If you reference a success story, do it subtly. (e.g., "Been exploring how agencies are cutting manual work by 120hrs/mo..." rather than "We saved an agency 120hrs").
 5. FORMAT: Open with "Hi [FirstName]," and deliver the hook immediately. Make sure you mention any relevant previous interactions naturally in the DM if applicable.
-6. LENGTH: Absolute constraint - must be between 280 and 300 words.
+6. LENGTH: Absolute constraint - must be under 280 characters.
+7. OUTPUT FORMAT: Output ONLY the message text. Do NOT include any explanations, brackets, notes, or metadata.
 
 Write the connection note now:`;
 
   const rawNote = await generateWithOllama(prompt, settings, {
-    maxTokens: 500, // Increased maxTokens to allow 300 words
+    maxTokens: 150,
     temperature: 0.85,
   });
 

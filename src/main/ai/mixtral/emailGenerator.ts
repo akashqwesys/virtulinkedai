@@ -17,7 +17,7 @@ export async function generatePersonalizedEmail(
     yourServices: string;
     yourVision?: string;
     yourLinkedinUrl?: string;
-    emailType: "intro" | "follow_up" | "welcome" | "meeting_confirm";
+    emailType: "intro" | "follow_up" | "welcome" | "meeting_confirm" | "thank_you";
   },
   settings: AppSettings["ai"],
 ): Promise<{ subject: string; body: string }> {
@@ -70,6 +70,16 @@ STRATEGY & ALGORITHM:
 6. IF relevant, reference pricing ranges from the "PRICING & FLEXIBILITY" section.
 7. End the email by sharing your vision, a brief detail about your profile, and your direct LinkedIn URL.
 8. Format: Write in a very effective, compelling manner. There are no length limits.`,
+
+    thank_you: `EMAIL TYPE: THANK YOU / CLOSING
+Your goal is to graciously conclude the conversation if a deal was not reached, leaving a positive, lasting impression and an open door for future collaboration.
+STRATEGY & ALGORITHM:
+1. Express genuine gratitude for the time spent sharing thoughts, ideas, and exploring synergies with each other.
+2. Carefully reference the specific topics discussed and things communicated with the lead so far (use the PREVIOUS INTERACTIONS section to find exact topics).
+3. Frame the outcome positively: even if a deal didn't happen right now, emphasize the value of the connection made.
+4. Conclude by briefly sharing about your company (${context.yourCompany || 'Veda AI Lab'}) and your vision. Offer to stay connected in the future if they ever need help or want to bounce ideas around.
+5. End the email by giving brief details about your profile and providing your direct LinkedIn URL to encourage a continued community connection.
+6. Format: Write in a very effective, compelling, and warm manner. There are no length limits.`,
   };
 
   const db = getDatabase();
@@ -133,7 +143,11 @@ RULES:
 5. Sound genuine, human, and peer-to-peer — avoid aggressive sales templates.
 6. Reference specific details about their work/company.
 7. NEVER invent capabilities, metrics, or pricing not explicitly stated in the provided brochure text.
-8. End EVERY email by giving brief details about your profile, your vision, and providing your direct LinkedIn URL so the lead can visit your profile.
+8. SIGNATURE BLOCK: End EVERY email EXACTLY like this:
+   "Best regards,
+   ${context.yourName}
+   ${context.yourCompany}
+   Connect with me here: ${context.yourLinkedinUrl}"
 9. Format output EXACTLY as:
 SUBJECT: [subject line]
 BODY: [email body]

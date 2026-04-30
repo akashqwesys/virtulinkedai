@@ -63,6 +63,8 @@ export async function generateWithOllama(
       `5. NEVER invent, guess, or extrapolate services, pricing, or capabilities not explicitly stated in the knowledge base.`,
       `6. Adapt the sections you draw from based on the lead's industry, role, and company — use the most relevant service category and success story only if relevant.`,
       `7. Pricing should ONLY be mentioned if the lead explicitly asks. Otherwise, focus on outcomes, mutual growth, and value.`,
+      `8. SHOW, DON'T TELL: NEVER explicitly state your intentions. Do NOT use phrases like "I'm not looking to push", "I'm not here to sell", "I'd like to start a conversation", or "I want to build a community". Just act naturally.`,
+      `9. NO CLICHES: Never use openers like "I hope this finds you well" or "I came across your profile". Get straight to the point.`,
       ``,
       `---`,
       ``,
