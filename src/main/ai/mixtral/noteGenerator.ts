@@ -1,9 +1,12 @@
 import type { AppSettings, LinkedInProfile } from "../../../shared/types";
 import { generateWithOllama } from "./client";
-import { logActivity } from "../../storage/database";
+import { getDatabase, logActivity } from "../../storage/database";
 
 /**
  * Generate a personalized connection request note (≤300 characters)
+ *
+ * This uses the full narrative text of the Veda AI Lab Partnership Brochure 
+ * (injected by the client via VEDA_CONTEXT) to craft hyper-relevant notes.
  */
 export async function generateConnectionNote(
   profile: LinkedInProfile,
@@ -14,62 +17,94 @@ export async function generateConnectionNote(
   },
   settings: AppSettings["ai"],
 ): Promise<string> {
-  // Build a rich context block from whatever profile data we have
   const recentPost = profile.recentPosts?.[0]?.content?.substring(0, 150) || null;
   const topSkills = profile.skills?.slice(0, 4).join(", ") || null;
   const currentRole = profile.role || profile.headline || "their field";
   const company = profile.company || "their company";
   const aboutSnippet = profile.about?.substring(0, 200) || null;
 
+  const db = getDatabase();
+  const leadRow = db.prepare("SELECT * FROM leads WHERE linkedin_url = ?").get(profile.linkedinUrl) as any;
+  
+  let previousInteractions = "None";
+  if (leadRow) {
+    const actions: string[] = [`Current lead status: ${leadRow.status}`];
+    if (leadRow.connection_requested_at) actions.push(`- Connection request sent on ${leadRow.connection_requested_at}`);
+    if (leadRow.connection_accepted_at) actions.push(`- Connection accepted on ${leadRow.connection_accepted_at}`);
+    
+    const emails = db.prepare("SELECT type, subject, sent_at FROM emails WHERE lead_id = ? ORDER BY sent_at ASC").all(leadRow.id) as any[];
+    for (const em of emails) actions.push(`- Email sent (${em.type}): "${em.subject}" on ${em.sent_at}`);
+    
+    const convos = db.prepare("SELECT direction, content, sent_at FROM conversations WHERE lead_id = ? ORDER BY sent_at ASC").all(leadRow.id) as any[];
+    for (const cv of convos) actions.push(`- DM ${cv.direction === 'inbound' ? 'Received from lead' : 'Sent to lead'} on ${cv.sent_at}: "${cv.content}"`);
+    
+    if (actions.length > 1 || actions[0] !== `Current lead status: new`) {
+      previousInteractions = actions.join("\n");
+    }
+  }
+
   const contextBlock = [
     `Name: ${profile.firstName} ${profile.lastName}`,
     `Role: ${currentRole}`,
     `Company: ${company}`,
-    aboutSnippet ? `About (excerpt): ${aboutSnippet}` : null,
+    profile.location ? `Location: ${profile.location}` : null,
+    profile.about ? `About: ${profile.about}` : null,
     recentPost ? `Recent post topic: ${recentPost}` : null,
     topSkills ? `Key skills: ${topSkills}` : null,
+    profile.experience?.length ? `Experience: ${profile.experience.map(e => `${e.title} at ${e.company}`).join(', ')}` : null,
+    profile.education?.length ? `Education: ${profile.education.map(e => `${e.degree} from ${e.school}`).join(', ')}` : null,
   ]
     .filter(Boolean)
     .join("\n");
 
-  const prompt = `You are crafting a LinkedIn connection request note on behalf of ${context.yourName}, representing ${context.yourCompany || 'Veda AI Lab'}. Your core offerings align with the company brochure provided in the system context (white-label AI agents, automation, ERP intelligence).
+  const prompt = `You are crafting a LinkedIn connection request note on behalf of ${context.yourName}, representing ${context.yourCompany || 'Veda AI Lab'}.
 
-LEAD PROFILE:
-${contextBlock}
-
-SENDER IDENTITY (do NOT reveal these details directly — only use them to craft the right tone and angle):
+=== SENDER IDENTITY & CONTEXT ===
 - Name: ${context.yourName}
 - Company: ${context.yourCompany || 'Veda AI Lab'}
 - Services: ${context.yourServices || 'Custom AI, ERP Intelligence, Automation'}
-- Hidden end goal: build a genuine connection that may eventually lead to a conversation about shared interests in digital transformation, agency scaling, or technical delivery
 
-YOUR TASK:
-Write a LinkedIn connection request note (1–2 sentences MAX) that reads like it was written by a knowledgeable peer who found something genuinely interesting in this person's work, company, or domain.
+=== LEAD PROFILE ===
+${contextBlock}
 
-KNOWLEDGE BASE GUIDANCE:
-- Draw from SECTION 1 (Company Identity) and SECTION 3 (Partnership Model) for tone and positioning.
-- Match the service most relevant to this lead's role from SECTION 4 — but DO NOT name it directly. Let it inform your curiosity angle.
-- If the lead's industry matches a SUCCESS STORY (SECTION 9), use that domain knowledge to signal credibility.
-- NEVER mention pricing (SECTION 11). This is a cold connection note, not a pitch.
+=== PREVIOUS INTERACTIONS WITH THIS LEAD ===
+${previousInteractions}
 
-STRICT RULES — breaking ANY of these is a failure:
-1. ZERO SELLING: Do not mention services, products, pricing, meetings, demos, or pitches. This must read as peer-level curiosity, not outreach.
-2. LEAD-SPECIFIC HOOK: Reference something real from the lead's role, company, headline, or skills to prove this isn't automated.
-3. PEER POSITIONING: ${context.yourName} should feel like someone building at the same level as the lead — a technical collaborator, not a vendor.
-4. DOMAIN FIT: Only reference AI, automation, ERP, SaaS, or agency growth if it naturally fits the lead's background. Don't force it.
-5. NO CLICHÉS: NEVER use "I came across your profile", "I'd love to connect", "I noticed", "fellow professional", or generic filler.
-6. FORMAT: Open with "Hi [FirstName]," then immediately deliver the hook — no preamble.
-7. OUTPUT: Return ONLY the note text. No quotes, no labels, no explanations.
-8. LENGTH: Stay under 280 characters.
+=== FULL TASK INSTRUCTIONS ===
+The system has provided you with the COMPLETE narrative text of the "Veda AI Lab — Partnership Brochure 2026" above.
+Your task is to write a LinkedIn connection request note (1-2 sentences MAX) to this lead.
+
+You must meticulously analyze the brochure text and cross-reference it with the LEAD PROFILE using this algorithm:
+
+STEP 1: INDUSTRY & ROLE MAPPING
+Look at the lead's "Role" and "Company". Scan the brochure's "VERTICAL EXPERTISE & ECOSYSTEM" and "PROVEN SUCCESS STORIES" sections.
+- Does the lead work in Manufacturing? Note the 40% cost reduction story.
+- Does the lead work in E-Commerce? Note the 120 hrs/mo saved story.
+- Are they an Agency owner? Note the "100% Invisible White Label" model.
+- Are they in IT/Engineering? Note the "Self-Hosted LLMs" or "Custom API integrations".
+
+STEP 2: IDENTIFY THE THEME
+Select ONE specific concept from the brochure that aligns perfectly with the lead's profile.
+Do NOT list out services. Instead, use your knowledge of the brochure to speak their language. For example, if they are an Operations Director, you know Veda builds "ERP Intelligence" and "Workflow Automation". Mentioning "scaling operations" or "process bottlenecks" signals you understand their world.
+
+STEP 3: CRAFT THE HOOK
+Write the note as a peer. ${context.yourName} is a senior expert from Veda AI Lab (which has 15+ years experience, 200+ projects). Sound like a practitioner, not a salesperson.
+
+STRICT RULES (BREAKING THESE IS A FAILURE):
+1. MAIN INTENTION: Your goal is to build a community and connect with the lead. Focus on mutual contribution and help. If the lead shows buying interest (in PREVIOUS INTERACTIONS), gracefully reflect that, but otherwise, balance networking with subtle service awareness.
+2. ZERO HARD SELLING: Never mention pricing, never explicitly ask for a meeting on the first note, never bluntly say "we can help you".
+3. NO CLICHÉS: Never use "I came across your profile", "I noticed", "I'd love to connect", "As a fellow professional", "Great to see".
+4. SUBTLETY: If you reference a success story, do it subtly. (e.g., "Been exploring how agencies are cutting manual work by 120hrs/mo..." rather than "We saved an agency 120hrs").
+5. FORMAT: Open with "Hi [FirstName]," and deliver the hook immediately. Make sure you mention any relevant previous interactions naturally in the DM if applicable.
+6. LENGTH: Absolute constraint - must be between 280 and 300 words.
 
 Write the connection note now:`;
 
   const rawNote = await generateWithOllama(prompt, settings, {
-    maxTokens: 100,
+    maxTokens: 500, // Increased maxTokens to allow 300 words
     temperature: 0.85,
   });
 
-  // Strict sanitization
   let cleaned = rawNote
     .trim()
     .replace(/^["""''`]+|["""''`]+$/g, "")                              
@@ -78,15 +113,16 @@ Write the connection note now:`;
     .replace(/\s{2,}/g, " ")                                           
     .trim();
 
-  // Hard cap at 300 characters
-  if (cleaned.length > 300) {
-    cleaned = cleaned.substring(0, 297).replace(/\s+\S*$/, "") + "…";
-  }
-
   logActivity("ai_connection_note_generated", "ai", {
     leadName: `${profile.firstName} ${profile.lastName}`,
     noteLength: cleaned.length,
   });
+
+  console.log("=== AI Generated Connection Note (Raw) ===");
+  console.log(rawNote);
+  console.log("=== AI Generated Connection Note (Cleaned) ===");
+  console.log(cleaned);
+  console.log("============================================");
 
   return cleaned;
 }

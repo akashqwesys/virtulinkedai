@@ -221,6 +221,15 @@ class PipelineRunner {
        );
     }
 
+    const pendingFollowupCheckCount = (db.prepare(`SELECT COUNT(*) AS cnt FROM job_queue WHERE type = ? AND status IN ('pending', 'running')`).get(JOB_TYPES.CHECK_DM_FOLLOWUPS) as any).cnt;
+    if (pendingFollowupCheckCount === 0) {
+       jobQueue.enqueue(
+         JOB_TYPES.CHECK_DM_FOLLOWUPS,
+         { campaignId },
+         { priority: 5 }
+       );
+    }
+
     return true;
   }
 }

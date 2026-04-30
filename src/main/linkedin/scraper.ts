@@ -266,43 +266,54 @@ interface ContactInfo {
 /**
  * Clicks the "Contact info" button in the top card, reads the modal,
  * then closes it. Returns null if the button is not present.
- * Only available for 1st-degree connections and some 2nd-degree profiles.
  */
-async function extractContactInfo(page: Page): Promise<ContactInfo | null> {
+async function extractContactInfo(page: Page, isSalesNavigator: boolean = false): Promise<ContactInfo | null> {
   try {
-    // Find the contact info button — scoped to main top card area
-    const contactBtn = await page.$(
-      "main a[href*='overlay/contact-info'], main button[aria-label*='contact info'], main a[id*='contact-info']"
-    );
+    let contactBtn: any;
+    
+    if (isSalesNavigator) {
+      // Sales Navigator specific contact info selectors
+      contactBtn = await page.$(
+        'a[data-control-name="contact_details"], [aria-label*="Contact info"], button[data-anonymize="contact-details"]'
+      );
+    } else {
+      // Standard LinkedIn contact info selectors
+      contactBtn = await page.$(
+        "main a[href*='overlay/contact-info'], main button[aria-label*='contact info'], main a[id*='contact-info']"
+      );
+    }
 
     if (!contactBtn) {
-      console.log("[Scraper] No Contact Info button found (expected for 2nd/3rd degree).");
+      console.log(`[Scraper] No Contact Info button found (${isSalesNavigator ? 'SalesNav' : 'Standard'}).`);
       return null;
     }
 
-    // Check X-coordinate guard
+    // Check visibility
     const rect = await page.evaluate((el: any) => {
       const r = el.getBoundingClientRect();
       return { x: r.x, visible: el.offsetParent !== null };
     }, contactBtn);
 
-    if (rect.x > 850 || !rect.visible) return null;
+    if (rect.x > 950 || !rect.visible) return null;
 
     await humanClick(page, contactBtn);
     await humanDelay(1500, 2500); // Wait for modal to open
 
-    const contactData = await page.evaluate(() => {
+    const contactData = await page.evaluate((isSN: boolean) => {
       const doc = document as any;
       const modal =
         doc.querySelector(".pv-profile-section__section-info") ||
         doc.querySelector(".artdeco-modal__content") ||
+        doc.querySelector(".profile-topcard-contact-info") || // SalesNav
         doc.querySelector("[data-test-modal]");
 
       if (!modal) return null;
 
       // Email
       const emailEl: any = modal.querySelector("section.ci-email a") ||
-        modal.querySelector("a[href^='mailto:']");
+        modal.querySelector("a[href^='mailto:']") ||
+        modal.querySelector(".contact-info-item__email a"); // SalesNav
+      
       const email: string = emailEl
         ? (emailEl.href || "").replace("mailto:", "") || emailEl.textContent?.trim() || ""
         : "";
@@ -322,15 +333,16 @@ async function extractContactInfo(page: Page): Promise<ContactInfo | null> {
 
       // Phone
       const phoneEl: any = modal.querySelector("section.ci-phone span.t-14") ||
-        modal.querySelector("section.ci-phone");
+        modal.querySelector("section.ci-phone") ||
+        modal.querySelector(".contact-info-item__phone"); // SalesNav
       const phone: string = phoneEl?.textContent?.trim() || "";
 
       return { email, twitter, websites, phone };
-    });
+    }, isSalesNavigator);
 
     // Close the modal
     const closeBtn = await page.$(
-      ".artdeco-modal__dismiss, button[aria-label='Dismiss'], .pv-profile-section__close-modal-btn"
+      ".artdeco-modal__dismiss, button[aria-label='Dismiss'], .pv-profile-section__close-modal-btn, .artdeco-modal__close"
     );
     if (closeBtn) {
       await humanClick(page, closeBtn);
@@ -987,10 +999,44 @@ async function extractSalesNavProfile(
       const location = getText(".profile-topcard__location-data") || "";
       const about = getText(".profile-topcard__summary-content") || "";
 
-      return { firstName, lastName, headline, company, role: headline.split(" at ")[0] || "", location, about };
+      // Extract Experience
+      const experience: any[] = [];
+      const expItems = Array.from(document.querySelectorAll(".profile-experience-entity"));
+      expItems.forEach((item) => {
+        const title = item.querySelector(".profile-experience-entity__title")?.textContent?.trim() || "";
+        const companyName = item.querySelector(".profile-experience-entity__company-name")?.textContent?.trim() || "";
+        const duration = item.querySelector(".profile-experience-entity__duration")?.textContent?.trim() || "";
+        const description = item.querySelector(".profile-experience-entity__description")?.textContent?.trim() || "";
+        if (title) {
+          experience.push({
+            title,
+            company: companyName,
+            duration,
+            description,
+            isCurrent: duration.toLowerCase().includes("present"),
+          });
+        }
+      });
+
+      // Extract Education
+      const education: any[] = [];
+      const eduItems = Array.from(document.querySelectorAll(".profile-education-entity"));
+      eduItems.forEach((item) => {
+        const school = item.querySelector(".profile-education-entity__school-name")?.textContent?.trim() || "";
+        const degree = item.querySelector(".profile-education-entity__degree-name")?.textContent?.trim() || "";
+        const field = item.querySelector(".profile-education-entity__field-of-study")?.textContent?.trim() || "";
+        const years = item.querySelector(".profile-education-entity__dates")?.textContent?.trim() || "";
+        if (school) {
+          education.push({ school, degree, field, years });
+        }
+      });
+
+      return { firstName, lastName, headline, company, role: headline.split(" at ")[0] || "", location, about, experience, education };
     });
 
     if (!data) return null;
+
+    // Contact info extraction is handled in the main orchestrator calling extractContactInfo(page, true)
 
     return {
       id: uuid(),
@@ -1002,8 +1048,8 @@ async function extractSalesNavProfile(
       role: data.role,
       location: data.location,
       about: data.about,
-      experience: [],
-      education: [],
+      experience: data.experience || [],
+      education: data.education || [],
       skills: [],
       recentPosts: [],
       mutualConnections: [],
@@ -1158,19 +1204,17 @@ export async function scrapeProfile(
     profileData.isSalesNavigator = isSalesNavigator;
     profileData.scrapedAt = new Date().toISOString();
 
-    // ── Contact Info (only for normal profiles) ──
-    if (!isSalesNavigator) {
-      const contactInfo = await extractContactInfo(page);
-      if (contactInfo) {
-        profileData.rawData = {
-          ...profileData.rawData,
-          contactInfo,
-        };
-        // Persist extracted email to the profile object so upsertLeadProfile saves it
-        if (contactInfo.email) {
-          (profileData as any).email = contactInfo.email;
-          console.log(`[Scraper] Contact email found: ${contactInfo.email}`);
-        }
+    // ── Contact Info (Always attempt for both Normal and SalesNav) ──
+    const contactInfo = await extractContactInfo(page, isSalesNavigator);
+    if (contactInfo) {
+      profileData.rawData = {
+        ...profileData.rawData,
+        contactInfo,
+      };
+      // Persist extracted email to the profile object so upsertLeadProfile saves it
+      if (contactInfo.email) {
+        (profileData as any).email = contactInfo.email;
+        console.log(`[Scraper] Contact email found (${isSalesNavigator ? 'SalesNav' : 'Standard'}): ${contactInfo.email}`);
       }
     }
 

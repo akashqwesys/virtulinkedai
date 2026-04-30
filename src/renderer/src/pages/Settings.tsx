@@ -446,19 +446,32 @@ export default function Settings() {
             </div>
 
             {settings.ai.provider === "nvidia" && (
-              <div className="input-group" style={{ marginBottom: "20px" }}>
-                <label className="input-label">NVIDIA API Key</label>
-                <input
-                  type="password"
-                  className="input"
-                  value={settings.ai.nvidiaApiKey || ""}
-                  onChange={(e) => updateSettings("ai.nvidiaApiKey", e.target.value)}
-                  placeholder="nvapi-..."
-                />
-                <p className="text-sm text-muted" style={{ marginTop: "8px" }}>
-                  Get your free API key at <a href="https://build.nvidia.com" target="_blank" rel="noreferrer" style={{color: "var(--accent-primary)", textDecoration: "none"}}>build.nvidia.com</a>.
-                </p>
-              </div>
+              <>
+                <div className="input-group" style={{ marginBottom: "20px" }}>
+                  <label className="input-label">Primary Model API Key (NVIDIA)</label>
+                  <input
+                    type="password"
+                    className="input"
+                    value={settings.ai.nvidiaApiKey || ""}
+                    onChange={(e) => updateSettings("ai.nvidiaApiKey", e.target.value)}
+                    placeholder="nvapi-..."
+                  />
+                  <p className="text-sm text-muted" style={{ marginTop: "8px" }}>
+                    Get your free API key at <a href="https://build.nvidia.com" target="_blank" rel="noreferrer" style={{color: "var(--accent-primary)", textDecoration: "none"}}>build.nvidia.com</a>.
+                  </p>
+                </div>
+                
+                <div className="input-group" style={{ marginBottom: "20px" }}>
+                  <label className="input-label">Fallback Model API Key (Optional)</label>
+                  <input
+                    type="password"
+                    className="input"
+                    value={settings.ai.fallbackApiKey || ""}
+                    onChange={(e) => updateSettings("ai.fallbackApiKey", e.target.value)}
+                    placeholder="Leave blank to use primary key"
+                  />
+                </div>
+              </>
             )}
 
             {settings.ai.provider === "ollama" && (

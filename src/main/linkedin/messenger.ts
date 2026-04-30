@@ -727,6 +727,7 @@ export async function sendWelcomeDM(
     yourName: string;
     yourCompany: string;
     yourServices: string;
+    objectiveOverride?: "follow_up_1" | "follow_up_2" | "follow_up_3";
   },
   settings: AppSettings,
 ): Promise<{ success: boolean; message: string }> {
@@ -869,15 +870,20 @@ export async function sendWelcomeDM(
     `).run(profile.id);
 
     // Determine objective based on conversation state
+    let objective: 'build_rapport' | 'share_value' | 'suggest_meeting' | 'book_appointment' | 'follow_up_1' | 'follow_up_2' | 'follow_up_3' = 'build_rapport';
     const userHasReplied = history.some(m => m.role === 'user');
     const assistantCount = history.filter(m => m.role === 'assistant').length;
-    let objective: 'build_rapport' | 'share_value' | 'suggest_meeting' | 'book_appointment' = 'build_rapport';
-    if (assistantCount === 0 && !userHasReplied) {
+
+    if (context.objectiveOverride) {
+      objective = context.objectiveOverride;
+    } else {
+      if (assistantCount === 0 && !userHasReplied) {
       objective = 'build_rapport';   // Fresh thread â€” open with rapport
     } else if (assistantCount >= 1 && userHasReplied && assistantCount < 3) {
       objective = 'share_value';     // They replied â€” demonstrate value
-    } else if (assistantCount >= 3) {
-      objective = 'suggest_meeting'; // Push toward a call
+      } else if (assistantCount >= 3) {
+        objective = 'suggest_meeting';
+      }
     }
 
     const welcomeMessage = await generateChatbotReply(
@@ -917,10 +923,10 @@ export async function sendWelcomeDM(
       await humanClick(page, sendBtn as any);
       await humanDelay(1500, 2500);
       
-      // 6. State Updates
-      db.prepare(`
-        UPDATE leads SET chatbot_state = 'waiting_reply' WHERE id = ?
-      `).run(profile.id);
+      // 6. State Updates (do not override to waiting_reply if we are already in follow-up)
+      if (!context.objectiveOverride) {
+        db.prepare(`UPDATE leads SET chatbot_state = 'waiting_reply' WHERE id = ?`).run(profile.id);
+      }
       
       return { success: true, message: welcomeMessage };
     } else {
@@ -928,9 +934,9 @@ export async function sendWelcomeDM(
       await page.keyboard.press("Enter");
       await humanDelay(1500, 2000);
       
-      db.prepare(`
-        UPDATE leads SET chatbot_state = 'waiting_reply' WHERE id = ?
-      `).run(profile.id);
+      if (!context.objectiveOverride) {
+        db.prepare(`UPDATE leads SET chatbot_state = 'waiting_reply' WHERE id = ?`).run(profile.id);
+      }
       
       return { success: true, message: welcomeMessage };
     }

@@ -1,313 +1,73 @@
 /**
- * VEDA AI LAB — Complete Company Knowledge Base
+ * VEDA AI LAB — Comprehensive Narrative Knowledge Base
  *
- * Merged and deduplicated from:
- *   - Partnership Brochure 2026 (PDF)
- *   - Context 1 (Exhaustive Technical Overview)
- *   - Context 2 (Comprehensive Brochure Breakdown)
- *
- * This is injected as system context into every AI generation call.
- * Keep it clean, structured, and token-efficient.
+ * This context provides an exhaustive, highly detailed understanding of Veda AI Lab,
+ * translated from the 18-page Partnership Brochure 2026 into coherent, flowing sentences.
+ * It contains every single metric, service detail, use case, and partnership rule,
+ * structured perfectly for the AI to understand deeply without raw/confusing text.
  */
 
 export const VEDA_CONTEXT = `
-=== SECTION 1: COMPANY IDENTITY ===
-Company Name: Veda AI Lab LLC
-Legal Status: Registered LLC in Kentucky, USA
-Tagline: "Your Invisible AI R&D Partner"
-Services Tagline: "White-Label AI Agents · Chatbots · Automation · LLM Hosting · ERP Intelligence"
-Mission: To function as an agency's invisible in-house AI division — delivering enterprise-grade AI solutions that agencies can sell as their own.
+=== VEDA AI LAB: COMPLETE COMPANY OVERVIEW & CAPABILITIES ===
 
-Key Metrics:
-- 50+ Agency Partners across the US & Europe
-- 200+ Solutions Deployed
-- 99.9% Uptime SLA
-- <48 Hours Partner Onboarding
-- 15+ Years of software industry experience
-- 3 Countries Served
+COMPANY IDENTITY & SCALE
+Veda AI Lab LLC is a registered entity in Kentucky, USA, operating as the premier "Invisible AI R&D Partner" for digital agencies. The company specializes in delivering enterprise-grade, white-label AI solutions including autonomous AI agents, intelligent chatbots, workflow automation, self-hosted LLMs, and ERP intelligence. Operating with a strict NDA-first policy and aligned with ISO 27001 and SOC 2 Type II security practices, Veda ensures complete operational stealth. Currently, the company serves over 50 agency partners across 3 countries, having deployed more than 200 custom solutions. They maintain a 99.9% uptime SLA and guarantee partner onboarding in under 48 hours.
 
-=== SECTION 2: COMPANY HISTORY ===
-2011: Founded — started building enterprise-grade software solutions.
-2013: Operated as Qwesys Digital Solutions — ERP development and customization for ERPNext, Zoho, SAP, and Oracle.
-2022: AI/ML Transformation — pivoted to intelligent automation in response to agency demand.
-Current: Established as Veda AI Lab LLC (Kentucky, USA) — serving agencies globally with full white-label AI services.
+ORIGIN STORY
+The company's foundation rests on over 15 years of deep enterprise software experience. It began in 2011 with a vision to build robust enterprise solutions. By 2013, operating as Qwesys Digital Solutions, the team was heavily focused on ERP development and deep customization for platforms like ERPNext, Zoho, SAP, and Oracle. In 2022, responding directly to agency partners demanding intelligent automation, the company underwent an AI transformation. Today, Veda AI Lab LLC stands exclusively to serve agencies with powerful white-label AI capabilities.
 
-Origin quote: "Born from 15+ years of enterprise software experience. We don't just build AI — we disappear, so your agency shines."
+THE INVISIBLE PARTNERSHIP MODEL
+Veda AI Lab is engineered specifically for agency success through a 100% invisible partnership model. Every engagement begins with a strict NDA, allowing the team to work seamlessly under the agency's own email domain and Slack workspace so that the end clients never know Veda exists. Pricing is highly predictable, utilizing fixed-cost and retainer models to ensure agencies maintain healthy margins with zero scope creep. Veda moves at agency speed, delivering working prototypes in 5 to 7 days and full production solutions in 2 to 4 weeks. Communication is handled via dedicated Slack Connect channels directly with project leads, completely avoiding traditional support queues. Veda provides transparent reporting through weekly sprint updates, shared project boards, and milestone demos. Upon full payment, the agency or their client receives a full intellectual property transfer, taking complete ownership of all source code, documentation, and deployment guides. 
 
-=== SECTION 3: WHITE-LABEL PARTNERSHIP MODEL ("Built for Agency Success") ===
-100% Invisible:
-- We sign strict NDAs and can work under your email domain. Your clients never know we exist.
+CORE SERVICES & METRICS
 
-Fixed & Retainer Pricing:
-- Predictable costs so agencies maintain healthy margins. No surprises, no scope creep.
+1. Custom AI Agents (Starting from $3,000)
+Veda builds autonomous agents designed to execute specific, complex workflows. For lead qualification and sales, these agents score, qualify, and route inbound leads directly into CRMs, effectively automating the lead lifecycle and generating a proven 5x improvement in lead velocity. For support triage, AI agents categorize and auto-respond using existing knowledge bases, learning from historical data to continuously reduce ticket resolution times by up to 60%. They build data analysis agents that parse ERP datasets to generate executive summaries and anomaly alerts automatically. Furthermore, they develop custom tool integrations with over 100 available API connectors featuring fault-tolerant retry logic. They also deploy 24/7 autonomous appointment scheduling agents with smart timezone conflict detection, alongside compliance monitoring agents that flag policy violations in real time. The tech stack includes LangChain, OpenAI, CrewAI, Python, n8n, and Pinecone.
 
-Rapid Delivery:
-- Prototypes in 5-7 days. Full solutions in 2-4 weeks. We move at agency speed.
+2. AI Voice & Video Agents (Starting from $6,000)
+Moving beyond text, Veda deploys 24/7 inbound and outbound AI voice agents capable of natural conversation in over 20 languages. These agents are used for inquiries, booking, and massive outbound campaigns capable of handling thousands of calls per day at scale. For meetings, AI video assistants integrate seamlessly with Zoom, Google Meet, and Microsoft Teams to join calls, transcribe in real time, generate summaries, and instantly update the CRM. These voice systems feature real-time sentiment analysis to track satisfaction scores live, and utilize state-of-the-art models for human-like custom voice cloning and brand-tone adaptation. All solutions include full compliance logging, call recording, and keyword extraction via analytics dashboards. The tech stack includes Vapi, LiveKit, ElevenLabs, Deepgram, OpenAI Realtime, and Twilio.
 
-Dedicated Slack Channel:
-- Real-time collaboration via Slack Connect with your project lead — not a support queue.
+3. Intelligent Chatbots (Starting from $2,500)
+Veda creates advanced RAG-powered (Retrieval-Augmented Generation) chatbots that securely connect to corporate wikis, SharePoint, Salesforce, and Confluence. These document Q&A systems provide highly accurate answers with direct source citations and page references from uploaded PDFs or internal knowledge bases. They natively support over 50 languages with automatic detection. For e-commerce, these chatbots act as intelligent product advisors that analyze browsing history and real-time inventory to boost conversion rates by up to 35%. Every chatbot features full CRM synchronization to automatically log conversations, and is deployed via a fully customizable, white-label web widget that embeds into any website with a single script tag. The tech stack includes RAG, LangChain, Pinecone, OpenAI, Supabase, and Next.js.
 
-Transparent Reporting:
-- Weekly sprint updates, shared project board, and milestone demos. Full visibility without micromanaging.
+4. Workflow Optimization & Automation (Starting from $4,000)
+Veda automates repetitive, cross-platform tasks by building robust pipelines connecting SAP, Oracle, Dynamics, ERPNext, Zoho, Salesforce, and more. A major capability is bi-directional real-time CRM-ERP synchronization, ensuring data consistency with automatic conflict resolution. For communication, they build trigger-based email and Slack sequences featuring smart follow-up detection to ensure zero missed follow-ups. They deploy AI-powered invoice and document processing pipelines that extract data, match purchase orders, and push to accounting systems with 99% accuracy. They also build automated HR employee onboarding flows and multi-channel marketing orchestration pipelines. The tech stack includes n8n, Make, custom Python, REST APIs, Webhooks, and Zapier.
 
-Full IP Transfer:
-- You or your client owns everything — source code, docs, and deployment guides — upon full payment.
+5. Self-Hosted LLMs & Enterprise Privacy (Starting from $15,000)
+For highly regulated industries requiring absolute data privacy, Veda deploys models like Llama 4 and Mistral directly onto private AWS, Azure, or bare metal infrastructure. This ensures no data ever leaves the client's environment. They specialize in fine-tuning models on proprietary data (like legal contracts or financial records) using LoRA and QLoRA, resulting in domain-specific accuracy gains of 30% to 50%. Deployments are fully HIPAA and SOC 2 compliant, featuring encrypted data, role-based access, and VPC isolation. Veda heavily optimizes inference costs through quantization, batching, and response caching to cut GPU costs by 40% to 70%. For extreme security needs, such as defense or government, they build entirely air-gapped deployments with zero external dependencies. The tech stack includes vLLM, Terraform, Kubernetes, and Docker.
 
-Branded Deliverables:
-- All proposals, architecture diagrams, user guides, and dashboards carry the agency's branding. Zero trace of Veda AI Lab.
+6. ERP Intelligence & Business Intelligence (Starting from $20,000)
+Veda turns raw enterprise data into predictive decisions. They build AI-powered inventory forecasting models using historical sales data to predict demand, which has been proven to reduce overstock costs by 20% to 35% and eliminate stockouts. Their sales prediction models score deal probability and increase quarterly forecast accuracy by over 25%. They create automated procurement systems that trigger purchase orders based on consumption patterns, saving clients 15% to 25% on procurement costs. Additionally, they build real-time anomaly detection dashboards, 30/60/90-day cash flow prediction models, and AI-ranked supplier scoring engines. The tech stack includes Python, scikit-learn, TensorFlow, Power BI, SAP RFC, and ERPNext APIs.
 
-Client Management:
-- The agency runs the meetings. Veda prepares talking points, objection handlers, and live demos behind the scenes.
+7. White-Label R&D Division (Custom Pricing)
+Veda operates as an entire in-house AI division for agencies. This includes creating heavily branded documentation—such as proposals, architecture diagrams, SOWs, and user guides—that carry the agency's identity with zero trace of Veda. They prepare presentation-ready materials including custom capability decks and ROI calculators. Veda's engineers assign themselves directly to the agency's account to learn their specific client's tech stack and communication style, maintaining consistent continuity. They even build working prototypes for client-facing demos, preparing all the talking points and objection handlers so the agency can run the meeting flawlessly, followed by continuous invisible post-launch support.
 
-=== SECTION 4: SERVICES ===
+PROVEN SUCCESS STORIES (ANONYMIZED)
+Veda's results speak for themselves across various verticals:
+- Manufacturing Agency: Achieved a 40% cost reduction by deploying custom AI agents for lead qualification and SAP CRM automation, completely replacing three previously manual processes.
+- HealthTech Consultancy: Accelerated patient onboarding by 3x by implementing HIPAA-compliant chatbots with complex document understanding, maintaining zero compliance issues.
+- E-Commerce Agency: Reclaimed 120 hours per month for the client's team by integrating ERPNext with AI-powered inventory forecasting to eliminate manual inventory checks.
+- Legal Tech Firm: Increased contract review speed by 65% by deploying custom AI agents powered by self-hosted LLMs to analyze confidential legal documents securely.
+- Real Estate Agency: Doubled their qualified lead conversion rate (a 2x improvement) by implementing 24/7 AI voice agents to pre-qualify buyer inquiries over the phone.
+- Retail Chain: Reduced overstock costs by 30% across more than 50 locations using AI-powered demand forecasting tied into their Oracle ERP data.
 
---- 4A: CUSTOM AI AGENTS (Starting from $3,000) ---
-Overview: Autonomous agents designed to execute specific workflows — from lead qualification and support triage to data analysis and custom ERP/CRM integrations.
+VERTICAL EXPERTISE & ECOSYSTEM
+With over 15 years of experience, Veda delivers enterprise-grade solutions across nearly every vertical, including FinTech, Legal, Real Estate, E-Commerce, Manufacturing, Education, Logistics, SaaS, Recruitment, Government, Media, and Hospitality. Their technical ecosystem integrates seamlessly with top enterprise platforms (SAP, Oracle, Dynamics 365, ERPNext, Zoho), CRMs (Salesforce, HubSpot, Pipedrive), and massive cloud/automation infrastructure (AWS, GCP, Azure, n8n, Make).
 
-Sub-Capabilities:
-- Lead Qualification & Sales: Score, qualify, and route inbound leads via CRM integration. Automates the entire lead lifecycle. Result: 5x lead velocity improvement.
-- Support Triage & Resolution: AI categorizes and auto-responds using CRM data and knowledge bases. Learns from historical tickets. Result: 60% faster ticket resolution.
-- Data Analysis & Reporting: Agents analyze datasets from ERPs — producing dashboards, anomaly alerts, and executive summaries via natural language querying. Result: Auto-generated executive insights.
-- Custom Tool Integrations: Connect to any API, database, or platform. Fault-tolerant connectors with advanced retry logic. Result: 100+ API connectors available.
-- Appointment & Scheduling: AI-powered agents that coordinate calendars, send reminders, sync across platforms. Timezone-aware with smart conflict detection. Result: 24/7 autonomous booking.
-- Compliance & Monitoring: Automated compliance checks, audit trail generation, real-time monitoring agents that flag policy violations. Result: Real-time violation alerts.
+THE VEDA TEAM
+The Veda team consists of 25 dedicated professionals working toward one mission. They do not rely on freelancers or subcontracting. When an agency partners with Veda, they get direct access to the senior engineers building the solutions, without project managers gatekeeping the technical discussions. The team comprises 6 AI/ML Engineers, 4 Full-Stack Developers, 3 ERP Architects, 2 Prompt Engineers, 3 QA/DevOps Specialists, 4 Support Staff, and 3 Business Team members.
 
-Deliverables: Deployed Agent(s), API Documentation, White-Label Dashboard, 90-Day Support
-Tech Stack: LangChain, OpenAI, CrewAI, Python, n8n, Pinecone
-Common Use Cases: Lead scoring & routing, customer support automation, data pipelines, invoice processing, compliance monitoring, appointment scheduling
+ENGAGEMENT PROCESS
+Veda's process is simple and transparent. Step 1 (Discovery & Scope) is completely free and entails analyzing requirements to deliver a white-label proposal. Step 2 (Development) occurs in 2-to-4-week agile sprints with full transparency. Step 3 (Integration & Testing) involves rigorous QA and connecting the AI to the client's existing stack. Step 4 (Handover & Support) guarantees full documentation, deployment under the agency brand, and ongoing 90-day post-launch support.
 
---- 4B: AI VOICE & VIDEO AGENTS (Starting from $6,000) ---
-Overview: Beyond text — AI agents that talk, listen, and see. Deploy 24/7 phone agents and video meeting assistants that feel human and adapt to the client's brand tone.
+PRICING & FLEXIBILITY
+Veda believes in earning trust through delivery. They offer flexible milestone-based payments with no large upfront commitments, and build completely around the agency's timeline. In addition to per-project pricing, Veda offers highly popular Monthly Retainer Plans for ongoing agency capacity:
+- The Starter plan ($2,500/month) offers 40 development hours for a single active project.
+- The Growth plan ($5,000/month) is the most popular, providing 100 development hours across 3 active projects with a dedicated project manager.
+- The Enterprise plan ($8,000/month) provides 200+ development hours for unlimited projects, a fully dedicated team, and custom 24/7 SLAs.
 
-Sub-Capabilities:
-- AI Voice Call Agents: Inbound/outbound 24/7 phone agents for inquiries, appointment booking, and lead qualification. Available in 20+ languages with natural conversation flow.
-- AI Video Meeting Assistants: Join calls, transcribe in real-time, generate summaries, and auto-update CRMs. Integrates with Zoom, Google Meet, and Microsoft Teams.
-- Real-Time Sentiment Analysis: Live speech-to-text with sentiment detection. Monitor satisfaction scores, flag escalations instantly, and provide agent coaching prompts.
-- Natural-Sounding AI Voices: Custom voice cloning and brand-tone adaptation. Indistinguishable from humans with dynamic emotional tone variation.
-- Outbound Campaign Calls: AI-powered outbound dialing for collections, surveys, and follow-ups. Scale to thousands of simultaneous calls with adaptive scripting. Result: 1000s of calls/day at scale.
-- Call Recording & Analytics: Automatic transcription, keyword extraction, compliance logging, and performance dashboards.
+By partnering with Veda AI Lab, agencies can stop turning away highly lucrative AI projects and immediately start delivering cutting-edge AI solutions to their clients with absolutely zero hiring, zero training, and zero risk.
+=== END OF VEDA AI LAB CONTEXT ===
+`;
 
-Deliverables: Voice Agent Deployment, Call Analytics Dashboard, CRM Integration, 90-Day Support
-Tech Stack: Vapi, LiveKit, ElevenLabs, Deepgram, OpenAI Realtime, Twilio
-Common Use Cases: 24/7 inbound support, appointment booking, payment reminders, meeting transcription, outbound campaigns, multi-language calls
-
---- 4C: INTELLIGENT CHATBOTS (Starting from $2,500) ---
-Overview: RAG-powered chatbots that understand context, documents, and company knowledge. Connect to SharePoint, Salesforce, Confluence, and speak 50+ languages.
-
-Sub-Capabilities:
-- Document Q&A Systems: Upload PDFs or connect to corporate wikis — chatbot answers with source citations and page references. Perfect for enterprise knowledge management.
-- Multi-Language Support: Serve global audiences in 50+ languages with automatic detection and culturally appropriate responses.
-- Custom Knowledge Bases: Build structured knowledge from scattered data — catalogs, SOPs, legal docs — all searchable via natural language queries.
-- CRM Sync & Analytics: Track queries, identify knowledge gaps, measure resolution rates, and auto-log conversations to CRM.
-- E-Commerce Product Advisor: Intelligent product recommendations based on customer preferences, browsing history, and real-time inventory. Result: 35% conversion rate boost.
-- White-Label Web Widget: Fully customizable chat widget in the client's brand colors and tone. Embeds in any website with a single script tag instantly.
-
-Deliverables: Chatbot + Web Widget, Admin Panel, Analytics Dashboard, White-Label Embed
-Tech Stack: RAG, LangChain, Pinecone, OpenAI, Supabase, Next.js
-Connects to: SharePoint, Salesforce, Confluence
-Common Use Cases: Customer FAQ bots, knowledge assistants, HR policy chatbots, product recommendations, legal document Q&A, IT helpdesk
-
---- 4D: WORKFLOW AUTOMATION (Starting from $4,000) ---
-Overview: Automate repetitive tasks across CRM, ERP, and Email using n8n, Make, or custom Python. Connect SAP, Oracle, Dynamics, ERPNext, Zoho, Salesforce, and dozens more.
-
-Sub-Capabilities:
-- CRM-ERP Synchronization: Bi-directional sync between CRMs (Salesforce, HubSpot) and ERPs (SAP, Oracle). Real-time data consistency with conflict resolution and audit trails.
-- Email & Communication: Trigger-based sequences, intelligent routing, and auto-responses across Gmail, Outlook, Slack. Smart follow-up detection ensures nothing falls through. Result: Zero missed follow-ups.
-- Invoice & Document Processing: AI-powered extraction from invoices and contracts — auto-validate, match POs, and push to accounting systems. Result: 99% extraction accuracy.
-- Custom Integration Pipelines: Connect any tools via REST APIs, webhooks, databases. Robust plumbing with retry logic and dead-letter queues. Result: Fault-tolerant architecture.
-- Employee Onboarding Flows: Automated HR workflows from offer letter to IT provisioning. Slack invites and training schedules triggered on hire with configurable approvals. Result: Day-one ready automation.
-- Marketing Automation: Campaign triggers, lead nurture sequences, UTM tracking, and multi-channel orchestration across email, SMS, and ad platforms.
-
-Deliverables: Configured Workflows, Error Handling & Retry, Monitoring Dashboard, 30-Day Tuning
-Tech Stack: n8n, Make, Python, REST APIs, Webhooks, Zapier
-Common Use Cases: Order-to-invoice pipelines, employee onboarding, report generation, data syncing, campaign triggers, inventory alerts
-
---- 4E: SELF-HOSTED LLMs / ENTERPRISE PRIVACY (Starting from $15,000) ---
-Overview: Deploy Llama 4, Mistral on private infrastructure for clients with strict data privacy, HIPAA, or regulatory requirements. No data leaves their environment — ever.
-
-Sub-Capabilities:
-- Llama 4 & Mistral Deployment: Production-ready on AWS, Azure, or bare metal. Optimized inference with auto-scaling, load balancing, and GPU cluster management.
-- Model Fine-Tuning: Fine-tune on proprietary data (legal contracts, financial data). Domain-specific accuracy improvements of 30-50% with LoRA and QLoRA.
-- HIPAA & SOC 2 Compliant: Encrypted at rest/transit, audit logging, role-based access, and VPC isolation. Full compliance documentation for regulated industries.
-- Cost-Optimized Inference: Quantization, batching, and response caching cutting GPU costs by 40-70% while maintaining output quality. Smart token-level cost tracking.
-- RAG Pipeline Integration: Connect self-hosted LLMs to internal knowledge bases via Retrieval-Augmented Generation pipelines with hybrid search. Result: Private knowledge retrieval.
-- Air-Gapped Deployment: Fully offline deployment for defense and high-security environments. No internet connection required — complete data sovereignty. Result: Zero external dependencies.
-
-Deliverables: Deployed LLM, Fine-Tuned Model, API Gateway, IaC (Terraform/Helm), Compliance Docs
-Tech Stack: Llama 4, Mistral, vLLM, Terraform, Kubernetes, Docker
-Common Use Cases: Legal contract analysis, financial data processing, healthcare records, proprietary chatbots, government AI, air-gapped environments
-
---- 4F: ERP INTELLIGENCE / BUSINESS INTELLIGENCE (Starting from $20,000) ---
-Overview: AI-powered inventory forecasting, sales prediction, and automated procurement for SAP, Oracle, Microsoft Dynamics, ERPNext & Zoho. Turn raw data into decisions.
-
-Sub-Capabilities:
-- Inventory Forecasting: ML models trained on historical sales and seasonality — reducing overstock costs by 20-35% and eliminating stockouts with predictive reordering.
-- Sales Prediction: Predict revenue, score deal probability, and identify at-risk accounts using ERP data. Result: 25%+ forecast accuracy improvement.
-- Automated Procurement: AI-triggered purchase orders based on consumption patterns and budget constraints. Result: 15-25% procurement cost savings.
-- Anomaly Detection: Real-time dashboards flagging unusual spending, inventory discrepancies, and fraud patterns automatically. Result: Instant anomaly alerts.
-- Cash Flow Prediction: Predict cash positions 30/60/90 days out using AR/AP data, seasonal patterns, and customer payment behavior. Scenario modeling included.
-- Supplier Scoring: AI-ranked supplier performance using delivery times and pricing history. Automated vendor recommendation engine with risk assessment scoring.
-
-Deliverables: Trained ML Models, Custom Dashboards, ERP Connectors, Alert System, Retraining Pipeline
-Tech Stack: Python, scikit-learn, TensorFlow, ERPNext API, SAP RFC, Power BI
-Common Use Cases: Demand forecasting, price optimization, supplier scoring, cash flow prediction, churn analysis, warehouse optimization
-
---- 4G: WHITE-LABEL R&D (Custom Pricing — Let's Talk) ---
-Overview: Your agency needs an AI division? We are it. From capability decks to client demos, we function as your in-house AI team — fully white-labeled. Your clients will never know.
-
-Sub-Capabilities:
-- Branded Documentation: Every document — proposals, architecture diagrams, user guides — carries your branding. Zero trace of Veda AI Lab anywhere in deliverables.
-- Client-Facing Demos: Working prototypes that impress clients. We prepare talking points, objection handlers, and live demos for the agency to run.
-- Ongoing Maintenance: Post-launch support under the agency's brand — bug fixes, feature additions, and security patches with complete invisibility.
-- Capability Presentations: Custom decks, ROI calculators, and technical feasibility documents. We make agencies look like AI experts.
-- Dedicated Team Assignment: Named engineers assigned to the account who learn the client's stack and communication style. Consistent quality across projects.
-- Slack & Email Integration: Our team operates under the agency's email domain and Slack workspace. Complete operational invisibility.
-
-Deliverables: Full Project Under Your Brand, Source Code & IP Transfer, Branded Docs, Client-Ready Demos
-What We Handle: Technical proposals, architecture diagrams, SOWs & contracts, client presentations, ROI calculators, post-launch maintenance
-
-=== SECTION 5: TECHNICAL ECOSYSTEM ===
-We integrate with the client's existing stack across all domains:
-
-AI & ML: OpenAI, Anthropic, LangChain, Meta/Llama, Pinecone, vLLM, Whisper
-Enterprise ERP: SAP, Oracle, Microsoft Dynamics 365, ERPNext, Zoho
-CRM & Sales: Salesforce, HubSpot, Pipedrive
-Communication: Slack, MS Teams, Twilio, Notion
-Voice & Video AI: Vapi, LiveKit, ElevenLabs, Deepgram, OpenAI Realtime, WebRTC
-E-Commerce & Accounting: Shopify, Magento, QuickBooks, Xero
-Automation & Cloud: n8n, Make, Zapier, AWS, GCP, Azure
-Dev Stack: Python, Next.js, React, Node.js, Supabase, PostgreSQL, Docker, Kubernetes, Terraform
-Additional Capabilities: RAG, Fine-Tuning (LoRA/QLoRA), vLLM inference optimization
-
-=== SECTION 6: TEAM ===
-25 People. One Mission.
-No freelancers. No subcontracting. A dedicated, senior team that picks up the phone, remembers the client's stack, and treats agency deadlines as their own.
-
-Team Composition:
-- AI/ML Engineers: 6
-- Full-Stack Developers: 4
-- ERP Architects: 3
-- Prompt Engineers: 2
-- QA & DevOps: 3
-- Support Staff: 4
-- Business Team: 3
-
-Culture Quote: "When you partner with Veda, you get direct access to the engineers building your solutions. No project managers gatekeeping — just senior developers who understand your client's business."
-
-=== SECTION 7: HOW WE WORK (Process) ===
-Simple. Transparent. Designed for Agencies.
-NDA is signed before any scope discussion begins. Client relationships stay yours — always.
-
-Step 1 — Discovery & Scope (Free · No Commitment):
-Analyze client requirements and define technical architecture. Deliver a white-label proposal the agency can present as their own.
-
-Step 2 — Development (2-4 Week Sprints):
-Build in agile sprints with regular updates via white-label Slack channel or project board. Full transparency at every stage.
-
-Step 3 — Integration & Testing (Rigorous QA):
-Connect the AI solution to the client's ERP, CRM, or existing stack. Perform rigorous QA testing before any deployment.
-
-Step 4 — Handover & Support (Full Documentation):
-Deploy, document everything under the agency's brand, and hand over. Ongoing maintenance and support packages available.
-
-=== SECTION 8: SECURITY, COMPLIANCE & TRUST ===
-NDA-First: Every engagement starts with a signed NDA. No exceptions. We sign before any scope discussion begins.
-SOC 2 Type II: Development, deployment, and data handling follow SOC 2 Type II security practices rigorously.
-ISO 27001 Aligned: Information security management aligned with ISO 27001 standards across all operations.
-Full IP Transfer: Source code, documentation, deployment guides — everything transfers to the agency/client upon full payment.
-US Legal Entity: Veda AI Lab LLC registered in Kentucky, USA. US contract law protections.
-Zero Client Exposure: We never reference clients, their brands, or their data. Only anonymized case studies — always.
-Uptime: 99.9% SLA.
-
-=== SECTION 9: SUCCESS STORIES (Anonymized) ===
-These are real results from real engagements — anonymized because confidentiality is our brand promise.
-
-Manufacturing Agency — 40% Cost Reduction:
-Custom AI Agents for lead qualification and CRM automation integrated with SAP. Replaced 3 manual processes entirely.
-
-HealthTech Consultancy — 3x Faster Patient Onboarding:
-HIPAA-compliant RAG chatbots with document understanding. Patients onboarded 3x faster with zero compliance issues.
-
-E-Commerce Agency — 120 Hours/Month Saved:
-ERPNext integration with AI-powered inventory forecasting. Team reclaimed 120 hours per month from manual inventory checks.
-
-Legal Tech Firm — 65% Faster Contract Reviews:
-Custom AI agents analyzing confidential contracts using self-hosted LLMs. Contract review time cut by 65%.
-
-Real Estate Agency — 2x Qualified Leads:
-AI voice agents pre-qualifying buyer inquiries 24/7 via phone. Doubled qualified lead conversion rate.
-
-Retail Chain — 30% Less Overstock:
-AI-powered demand forecasting across 50+ locations using Oracle ERP data. Reduced overstock costs by 30%.
-
-=== SECTION 10: INDUSTRIES SERVED ===
-15+ years. Every vertical. One constant: enterprise-grade quality.
-
-- FinTech & Banking
-- Legal & Compliance
-- Real Estate
-- E-Commerce & Retail
-- Manufacturing
-- Education & EdTech
-- Logistics & Supply Chain
-- SaaS & Technology
-- Recruitment & HR
-- Government
-- Media & Marketing
-- Hospitality & Travel
-
-Note: "We've served virtually every industry — and we're actively building out our healthcare capability too."
-
-=== SECTION 11: PRICING ===
-
-YOUR FIRST PROJECT — ON YOUR TERMS:
-We believe in earning trust through delivery, not promises.
-- Flexible Payment: Pay in milestones. No large upfront commitment.
-- Your Timeline: You set the deadline. We build around your schedule.
-- Free Scoping: Requirements analysis and white-label proposal at no cost.
-- 90-Day Support: Extended post-launch support included (vs. 30-day standard elsewhere).
-
-Per-Project Pricing:
-- Custom AI Agents: from $3,000
-- AI Voice/Video Agents: from $6,000
-- Intelligent Chatbots: from $2,500
-- Workflow Automation: from $4,000
-- Self-Hosted LLMs: from $15,000
-- ERP Intelligence: from $20,000
-
-Monthly Retainer Plans (for ongoing agency capacity):
-
-Starter — $2,500/month (For agencies testing AI waters):
-- 40 development hours
-- 1 active project
-- Slack support
-- Weekly status updates
-- White-label delivery
-
-Growth — $5,000/month — MOST POPULAR (For scaling agencies):
-- 100 development hours
-- 3 active projects
-- Priority Slack channel
-- Weekly strategy calls
-- Dedicated Project Manager
-- White-label everything
-
-Enterprise — $8,000/month (For agencies going all-in):
-- 200+ development hours
-- Unlimited projects
-- Dedicated team
-- 24/7 priority support
-- Custom SLA
-- Executive reviews
-
-=== SECTION 12: CONTACT ===
-Email: partners@vedaailab.com
-Website: vedaailab.com
-Partnership Application: vedaailab.com/partnership
-Response Time: Less than 24 hours — no gatekeepers
-Headquarters: Kentucky, USA (LLC)
-Call to Action: "Stop Turning Away AI Projects. Start delivering cutting-edge AI solutions to your clients tomorrow. No hiring. No training. No risk."
-`.trim();
-
-// Legacy export alias kept for any direct references during migration
 export const BROCHURE_CONTEXT = VEDA_CONTEXT;

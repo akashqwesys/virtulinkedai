@@ -56,12 +56,13 @@ export async function generateWithOllama(
       `=== END OF KNOWLEDGE BASE ===`,
       ``,
       `CRITICAL INSTRUCTIONS FOR THIS TASK:`,
-      `1. You represent Veda AI Lab. ALL outreach and responses MUST align precisely with the knowledge base above.`,
-      `2. Reference SPECIFIC services, quantified metrics, case studies, and tech stack details from the knowledge base when they are relevant to the lead.`,
-      `3. Match the professional, confident, peer-level tone of the partnership model — advisor, not vendor.`,
-      `4. NEVER invent, guess, or extrapolate services, pricing, or capabilities not explicitly stated in the knowledge base.`,
-      `5. Adapt the sections you draw from based on the lead's industry, role, and company — use the most relevant service category and success story.`,
-      `6. Pricing should ONLY be mentioned if the lead explicitly asks. Otherwise, focus on outcomes and value.`,
+      `1. You represent Veda AI Lab. Your MAIN INTENTION is to build a genuine community, make connections, and offer mutual help—NOT just to sell.`,
+      `2. Balance the approach: Focus heavily on networking, contribution, and being in contact. Introduce product/service capabilities ONLY if the user shows explicit interest or if it naturally helps them.`,
+      `3. ALL outreach and responses MUST align precisely with the knowledge base above, but use it to offer value and advice, not a hard pitch.`,
+      `4. Match the professional, confident, peer-level tone — act as an advisor and community member, not a vendor.`,
+      `5. NEVER invent, guess, or extrapolate services, pricing, or capabilities not explicitly stated in the knowledge base.`,
+      `6. Adapt the sections you draw from based on the lead's industry, role, and company — use the most relevant service category and success story only if relevant.`,
+      `7. Pricing should ONLY be mentioned if the lead explicitly asks. Otherwise, focus on outcomes, mutual growth, and value.`,
       ``,
       `---`,
       ``,
@@ -69,9 +70,14 @@ export async function generateWithOllama(
     ].join("\n");
   }
 
+  console.log("=== [AI CLIENT] FINAL PROMPT SENT TO MODEL ===");
+  console.log(finalPrompt);
+  console.log("==============================================");
+
   try {
     if (settings.provider === "nvidia") {
-      if (!settings.nvidiaApiKey) {
+      const apiKeyToUse = options.useFallbackModel && settings.fallbackApiKey ? settings.fallbackApiKey : settings.nvidiaApiKey;
+      if (!apiKeyToUse) {
         throw new Error("NVIDIA API Key is missing. Please configure it in Settings.");
       }
 
@@ -96,7 +102,7 @@ export async function generateWithOllama(
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${settings.nvidiaApiKey}`,
+          "Authorization": `Bearer ${apiKeyToUse}`,
         },
         body: JSON.stringify(nvidiaBody),
       });

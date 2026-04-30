@@ -18,6 +18,7 @@ export const JOB_TYPES = {
   SEND_REPLY_DM: "SEND_REPLY_DM",
   CHECK_ENGAGED_REPLIES: "CHECK_ENGAGED_REPLIES",
   CHECK_LEAD_THREAD: "CHECK_LEAD_THREAD",
+  CHECK_DM_FOLLOWUPS: "CHECK_DM_FOLLOWUPS",
 
   // Email Sequence
   SEND_INTRO_EMAIL: "SEND_INTRO_EMAIL",
@@ -82,6 +83,10 @@ export interface CheckLeadThreadPayload {
   leadId: string;
   linkedinUrl: string;
   campaignId: string;
+}
+
+export interface CheckDmFollowupsPayload {
+  campaignId?: string;
 }
 
 export interface SendIntroEmailPayload {

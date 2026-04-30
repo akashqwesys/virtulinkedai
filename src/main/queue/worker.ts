@@ -27,6 +27,7 @@ import type {
   SendReplyDmPayload,
   CheckEngagedRepliesPayload,
   CheckLeadThreadPayload,
+  CheckDmFollowupsPayload,
 } from "./jobs";
 import type { Job } from "./jobQueue";
 import { getDatabase, logActivity } from "../storage/database";
@@ -821,6 +822,83 @@ jobQueue.process<EnrichLeadEmailPayload>(
       { delayMs: 2000, priority: 4 },
     );
   },
+);
+
+// ============================================================
+// Handler: Check DM Follow-ups
+// ============================================================
+
+jobQueue.process<CheckDmFollowupsPayload>(
+  JOB_TYPES.CHECK_DM_FOLLOWUPS,
+  async (job: Job<CheckDmFollowupsPayload>) => {
+    enforceWorkingHours();
+    await ensureBrowserRunning();
+
+    const db = getDatabase();
+    
+    // Find leads waiting for reply who haven't progressed
+    const leads = db.prepare(`
+      SELECT id, campaign_id, first_name, last_name, headline, company, linkedin_url, raw_data_json, chatbot_state 
+      FROM leads 
+      WHERE chatbot_state IN ('waiting_reply', 'waiting_reply_1', 'waiting_reply_2')
+      AND status NOT IN ('handed_off', 'meeting_booked')
+    `).all() as any[];
+
+    for (const lead of leads) {
+      // Get the last message in this lead's thread
+      const lastMsg = db.prepare(`
+        SELECT direction, sent_at FROM conversations 
+        WHERE lead_id = ? ORDER BY sent_at DESC LIMIT 1
+      `).get(lead.id) as any;
+
+      if (!lastMsg || lastMsg.direction !== 'outbound') continue;
+
+      const sentTime = new Date(lastMsg.sent_at).getTime();
+      const now = Date.now();
+      const daysSince = (now - sentTime) / (1000 * 60 * 60 * 24);
+
+      if (daysSince >= 3) {
+        let objective: "follow_up_1" | "follow_up_2" | "follow_up_3" = "follow_up_1";
+        let newState = "waiting_reply_1";
+
+        if (lead.chatbot_state === 'waiting_reply_2') {
+          objective = "follow_up_3";
+          newState = "waiting_reply_3";
+        } else if (lead.chatbot_state === 'waiting_reply_1') {
+          objective = "follow_up_2";
+          newState = "waiting_reply_2";
+        }
+
+        console.log(`[Worker] Triggering ${objective} for ${lead.first_name} ${lead.last_name}`);
+
+        const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { 
+          id: lead.id, 
+          linkedinUrl: lead.linkedin_url,
+          firstName: lead.first_name || "",
+          lastName: lead.last_name || "",
+          headline: lead.headline || "",
+          company: lead.company || ""
+        };
+
+        const context = {
+          yourName: _settings?.personalization?.yourName || "User",
+          yourCompany: _settings?.personalization?.yourCompany || "",
+          yourServices: _settings?.personalization?.yourServices || "",
+          objectiveOverride: objective
+        };
+
+        try {
+          const result = await sendWelcomeDM(profile, context, _settings);
+          if (result.success) {
+            db.prepare(`UPDATE leads SET chatbot_state = ? WHERE id = ?`).run(newState, lead.id);
+            logActivity("dm_followup_sent", "queue", { leadId: lead.id, objective });
+          }
+        } catch (e) {
+          console.error(`[Worker] Failed to send ${objective} for ${lead.id}`, e);
+        }
+      }
+    }
+  }
 );
 
 // ============================================================

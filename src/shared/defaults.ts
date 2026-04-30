@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     ollamaApiPort: 11434,
     ollamaGeneratePort: 8080,
     nvidiaApiKey: "", // User will need to enter this in settings
+    fallbackApiKey: "",
     primaryModel: "meta/llama-3.3-70b-instruct",
     fallbackModel: "meta/llama-3.1-8b-instruct",
     temperature: 0.7,

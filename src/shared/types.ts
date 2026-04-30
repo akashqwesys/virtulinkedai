@@ -236,6 +236,7 @@ export interface AppSettings {
     ollamaApiPort: number; // 11434
     ollamaGeneratePort: number; // 8080
     nvidiaApiKey?: string; // NVIDIA API Key for build.nvidia.com
+    fallbackApiKey?: string; // API Key for the fallback model
     primaryModel: string; // mixtral:8x7b-instruct-v0.1-q3_K_M or meta/llama-3.1-70b-instruct
     fallbackModel: string; // mistral:7b-instruct-v0.3-q4_K_M or meta/llama-3.1-8b-instruct
     temperature: number;
