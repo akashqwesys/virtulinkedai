@@ -1660,11 +1660,14 @@ export async function importFromSearchUrl(
       if (results.length >= maxLeads) break;
 
       // ── Phase 4: Navigate to next page ────────────────────────────────
-      // Wait for the pagination container to be present in the DOM before
-      // querying the Next button — history.back() may leave React in a
-      // partially-rendered state for a short window.
-      await humanScroll(page, { direction: "up", distance: 1000 });
+      // Scroll to the bottom of the page to ensure LinkedIn lazy-loads the pagination container.
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       await humanDelay(1500, 2500);
+      // Small natural scroll up and down to trigger intersection observers just in case
+      await humanScroll(page, { direction: "up", distance: 300 });
+      await humanDelay(500, 1000);
+      await humanScroll(page, { direction: "down", distance: 400 });
+      await humanDelay(1000, 2000);
 
       // Ensure pagination has re-rendered after any back-navigation
       await page

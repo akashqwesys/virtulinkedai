@@ -5,6 +5,7 @@ import { getDatabase, logActivity } from "../storage/database";
 import { isAutoPilotRunning } from "../linkedin/autopilot";
 import { isBrowserLocked } from "../browser/engine";
 import { isWithinWorkingHours } from "../browser/humanizer";
+import { getLimitManager } from "../queue/worker";
 
 class PipelineRunner {
   private timer: NodeJS.Timeout | null = null;
@@ -103,30 +104,37 @@ class PipelineRunner {
   // It returns false if it found nothing to do, allowing the runner to slide to the next section.
 
   private tryRunQueueSection(db: any, campaignId: string): boolean {
+    const limitManager = getLimitManager();
+    // If limits are reached, we shouldn't enqueue and we should yield (return false)
+    if (limitManager && (!limitManager.canPerform("profileViews") || !limitManager.canPerform("connectionRequests"))) {
+      console.log("[PipelineRunner] Daily limit reached. Skipping queue section.");
+      return false;
+    }
+
     // Look for ONE lead in 'queued' or 'new'
     const queuedLead = db.prepare(`SELECT id, linkedin_url FROM leads WHERE campaign_id = ? AND status IN ('queued', 'new') LIMIT 1`).get(campaignId) as any;
     
     if (queuedLead) {
-      jobQueue.enqueue(
-        JOB_TYPES.SCRAPE_PROFILE,
-        {
-          leadId: queuedLead.id,
-          linkedinUrl: queuedLead.linkedin_url,
-          campaignId: campaignId,
-        },
-        { priority: 10 } // High priority since it's the tip of the spear
-      );
+      const pendingJobsCount = (db.prepare(`SELECT COUNT(*) AS cnt FROM job_queue WHERE type = ? AND status IN ('pending', 'running') AND payload LIKE ?`).get(JOB_TYPES.SCRAPE_PROFILE, `%${queuedLead.id}%`) as any).cnt;
+      if (pendingJobsCount === 0) {
+        jobQueue.enqueue(
+          JOB_TYPES.SCRAPE_PROFILE,
+          {
+            leadId: queuedLead.id,
+            linkedinUrl: queuedLead.linkedin_url,
+            campaignId: campaignId,
+          },
+          { priority: 10 } // High priority since it's the tip of the spear
+        );
+      }
       return true;
     }
 
     // If no raw queued leads, check if there are any scraped leads waiting for connection sending
-    // Wait, SCRAPE_PROFILE chains immediately into SEND_CONNECTION natively in worker.ts
-    // with a 10-second delay. Since we return if running > 0, it shouldn't be interrupted.
-    // However, if the app crashed between scrape and connection, we might have stranded 'profile_scraped' leads.
     const strandedLead = db.prepare(`SELECT id, linkedin_url FROM leads WHERE campaign_id = ? AND status = 'profile_scraped' LIMIT 1`).get(campaignId) as any;
     if (strandedLead) {
       // Fast check if it already has a pending SEND_CONNECTION job
-      const pendingJobsCount = (db.prepare(`SELECT COUNT(*) AS cnt FROM job_queue WHERE type = ? AND status = 'pending' AND payload LIKE ?`).get(JOB_TYPES.SEND_CONNECTION, `%${strandedLead.id}%`) as any).cnt;
+      const pendingJobsCount = (db.prepare(`SELECT COUNT(*) AS cnt FROM job_queue WHERE type = ? AND status IN ('pending', 'running') AND payload LIKE ?`).get(JOB_TYPES.SEND_CONNECTION, `%${strandedLead.id}%`) as any).cnt;
       
       if (pendingJobsCount === 0) {
         jobQueue.enqueue(
@@ -138,11 +146,8 @@ class PipelineRunner {
           },
           { priority: 9 }
         );
-        return true;
-      } else {
-        // A job is already pending for this. Let the queue run it. We just yield so it can run.
-        return true; 
       }
+      return true;
     }
 
     return false;

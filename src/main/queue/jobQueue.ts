@@ -223,27 +223,30 @@ export class JobQueue {
     try {
       const db = getDatabase();
 
-      // Fetch next eligible jobs
-      const jobs = db
-        .prepare(
-          `
-        SELECT * FROM job_queue
-        WHERE status = 'pending'
-          AND run_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        ORDER BY priority DESC, run_at ASC
-        LIMIT 5
-      `,
-        )
-        .all() as any[];
+      while (this.running) {
+        // Fetch next eligible job
+        const row = db
+          .prepare(
+            `
+          SELECT * FROM job_queue
+          WHERE status = 'pending'
+            AND run_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+          ORDER BY priority DESC, run_at ASC
+          LIMIT 1
+        `,
+          )
+          .get() as any;
 
-      for (const row of jobs) {
-        if (!this.running) break; // Check if stopped mid-batch
-        
+        if (!row) break;
+
         // Skip if already being processed 
-        if (this.processingJobIds.has(row.id)) continue;
+        if (this.processingJobIds.has(row.id)) break;
 
         const handler = this.handlers.get(row.type);
-        if (!handler) continue;
+        if (!handler) {
+          console.warn(`[JobQueue] No handler for job type ${row.type}`);
+          break;
+        }
 
         // Atomically claim the job
         const claimed = db
@@ -325,7 +328,8 @@ export class JobQueue {
       const isWorkingHoursError = message.includes("Outside working hours");
       const isAutoPilotError = message.includes("AutoPilot is running");
       const isCampaignPausedError = message.includes("Campaign is paused");
-      const isPausedError = isWorkingHoursError || isAutoPilotError || isCampaignPausedError;
+      const isLimitError = message.toLowerCase().includes("limit reached");
+      const isPausedError = isWorkingHoursError || isAutoPilotError || isCampaignPausedError || isLimitError;
 
       if (!isPausedError && job.attempts >= job.maxAttempts) {
         // Exhausted retries — mark as permanently failed

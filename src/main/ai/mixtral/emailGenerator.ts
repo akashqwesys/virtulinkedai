@@ -1,7 +1,6 @@
 import type { AppSettings, LinkedInProfile } from "../../../shared/types";
 import { generateWithOllama } from "./client";
 import { getDatabase, logActivity } from "../../storage/database";
-import { caseStudies } from "./caseStudies";
 
 /**
  * Generate a personalized outreach email
@@ -21,43 +20,37 @@ export async function generatePersonalizedEmail(
   },
   settings: AppSettings["ai"],
 ): Promise<{ subject: string; body: string }> {
-  const randomCaseStudy = caseStudies[Math.floor(Math.random() * caseStudies.length)];
-
   const typeInstructions: Record<string, string> = {
     intro: `EMAIL TYPE: INITIAL OUTREACH (INTRO)
-Your goal is to establish a genuine connection, build community, and spark interest.
+Your goal is purely networking and establishing a genuine connection. There must be NO intention of selling a product or pitching services.
 STRATEGY & ALGORITHM:
-1. Scan the full brochure for the exact Service Category in the "CORE SERVICES & METRICS" section most relevant to their role/industry.
-2. Open the email by referencing something specific about their role, company, or industry challenge — prioritize building a human connection.
-3. Introduce ${context.yourCompany || 'Veda AI Lab'} by positioning it as a white-label AI R&D partner that functions as an invisible AI division.
-4. Describe a concrete outcome from the brochure that solves their challenge (e.g., use EXACT metrics from the text: "5x lead velocity", "60% faster ticket resolution", or "20% to 35% overstock reduction").
-5. Draw from "THE INVISIBLE PARTNERSHIP MODEL" section: emphasize "free scoping", "prototypes in 5 to 7 days", and "full intellectual property transfer" to reduce perceived risk.
-6. Share your vision and a brief detail about your profile at the end of the email to foster community.
-7. Include your direct LinkedIn URL so they can connect with you.
-8. Format: Write in a very effective, compelling manner. There are no length limits.`,
+1. Open the email by explicitly stating that you have already sent them a connection request on LinkedIn.
+2. Express that their LinkedIn profile impressed you and you find it genuinely inspiring. Reference specific details from their profile to show you've paid attention.
+3. Express a desire to talk more, share thought processes, and exchange knowledge with each other.
+4. Use the provided VEDA brochure context invisibly as a framework to formulate intelligent thoughts or questions about their industry, but DO NOT pitch your company's services.
+5. Reference the message you already sent in the connection note (found in PREVIOUS INTERACTIONS) to ensure continuity.
+6. Include your LinkedIn account details/URL and encourage them to accept the request so you can talk further.
+7. Format: Write in a warm, human, and strictly networking-focused manner. Do not include any sales metrics, prototypes, or scoping offers. There are no length limits.`,
 
-    follow_up: `EMAIL TYPE: FOLLOW-UP
-Your goal is to add new value, build a strong community connection, and follow up without being pushy.
+    follow_up: `EMAIL TYPE: FOLLOW-UP (NO REPLY AFTER 3 DAYS)
+Your goal is purely networking and learning. There must be NO intention of selling a product or pitching services.
 STRATEGY & ALGORITHM:
-1. Do NOT re-introduce yourself or repeat the first email.
-2. Lead with a VALUE-ADD: Share a specific insight or anonymized result.
-3. We have randomly selected the following case study to showcase our expertise:
-"${randomCaseStudy}"
-4. INTEGRATE THE CASE STUDY: Do NOT copy the case study word-for-word. Instead, adapt its core metric and outcome naturally into the flow of your email. Present it as a brief proof point of what's possible, aligning perfectly with the email's intention to build a community of people with shared interests in innovation.
-5. Emphasize that the goal is exploring mutual synergies and learning from each other.
-6. Conclude by sharing your vision, a brief detail about your profile, and your direct LinkedIn URL to encourage them to join your network.
-7. Format: Write in a very effective, compelling manner. There are no length limits.`,
+1. Open the email by mentioning that you sent a connection request a few days ago and are following up.
+2. State clearly that your purpose for connecting is purely for networking, building a connection, learning more about their professional journey, and understanding the difficulties they face in their industry to increase mutual knowledge.
+3. Reiterate that you were genuinely impressed by their profile (reference specific details from the PREVIOUS INTERACTIONS or their profile) and that is why you want to connect and talk to them.
+4. Add a paragraph discussing current AI trends: Mention that in the era of AI, everything is planned through AI without needing humans to intervene. Express that you are planning to guide your models/company in a way where your model can mimic human behavior organically, and as you came across their profile, you found out that it will be mutually beneficial for both parties to exchange valuable knowledge with each other.
+5. Emphasize that you just want to exchange ideas. Use the provided VEDA brochure context invisibly to inform your perspective on AI trends, but DO NOT pitch or sell any of your company's services.
+6. Conclude by including your direct LinkedIn URL and encouraging them to join your network.
+7. Format: Write in a warm, human, and strictly networking-focused manner. Do not include any sales metrics. There are no length limits.`,
 
-    welcome: `EMAIL TYPE: POST-CONNECTION WELCOME
-Your goal is to build a lasting community relationship and convert a new connection into a 15-minute discovery call.
+    welcome: `EMAIL TYPE: POST-CONNECTION THANK YOU (WELCOME)
+Your goal is to build a lasting community relationship immediately after they accept your connection request.
 STRATEGY & ALGORITHM:
-1. Thank them warmly for connecting.
-2. Reinforce credibility by referencing a capability relevant to their domain from the "CORE SERVICES & METRICS" section.
-3. Reference low-risk entry points ("free scoping call", "no large upfront commitments", "prototypes in 5 to 7 days").
-4. Suggest a 15-minute discovery call to explore mutual synergies.
-5. IF in a compliance-sensitive industry, mention: NDA-first, SOC 2 Type II, ISO 27001, HIPAA compliant.
-6. End the email by sharing your vision, a brief detail about your profile, and your direct LinkedIn URL.
-7. Format: Write in a very effective, compelling manner. There are no length limits.`,
+1. Start by warmly appreciating them for connecting on LinkedIn.
+2. DO NOT pitch your product or mention your solutions. DO NOT say "we solve this" or "our work with similar organizations". Your intent is purely networking and learning.
+3. Actively analyze their LEAD PROFILE. Use your Veda AI Lab knowledge invisibly as a framework to form a highly intelligent, tailored question about their specific industry/role.
+4. Ask how their organization works, how they handle their specific role so effectively, or what kind of unique difficulties they face.
+5. Explicitly express your desire to learn from them with a phrase similar to: "I'd love to hear your thoughts so we can exchange knowledge" or "It would be great to learn from your experience."`,
 
     meeting_confirm: `EMAIL TYPE: MEETING CONFIRMATION
 Your goal is to set expectations, build anticipation, and solidify the community connection.
@@ -71,15 +64,16 @@ STRATEGY & ALGORITHM:
 7. End the email by sharing your vision, a brief detail about your profile, and your direct LinkedIn URL.
 8. Format: Write in a very effective, compelling manner. There are no length limits.`,
 
-    thank_you: `EMAIL TYPE: THANK YOU / CLOSING
-Your goal is to graciously conclude the conversation if a deal was not reached, leaving a positive, lasting impression and an open door for future collaboration.
+    thank_you: `EMAIL TYPE: LAST FOLLOW-UP / CLOSING
+Your goal is to make a final attempt to connect with an unresponsive lead while introducing your company in a helpful, non-pushy way.
 STRATEGY & ALGORITHM:
-1. Express genuine gratitude for the time spent sharing thoughts, ideas, and exploring synergies with each other.
-2. Carefully reference the specific topics discussed and things communicated with the lead so far (use the PREVIOUS INTERACTIONS section to find exact topics).
-3. Frame the outcome positively: even if a deal didn't happen right now, emphasize the value of the connection made.
-4. Conclude by briefly sharing about your company (${context.yourCompany || 'Veda AI Lab'}) and your vision. Offer to stay connected in the future if they ever need help or want to bounce ideas around.
-5. End the email by giving brief details about your profile and providing your direct LinkedIn URL to encourage a continued community connection.
-6. Format: Write in a very effective, compelling, and warm manner. There are no length limits.`,
+1. Open the email by mentioning that you have already tried to connect with them a few times and acknowledge that they must be very busy.
+2. Reiterate that you are very curious about their work after seeing their profile, and you want to share knowledge and communicate about a few things.
+3. Ask them to connect whenever they are free, either on LinkedIn (mention you already sent a request and share your direct LinkedIn URL) or by replying here on email.
+4. Briefly introduce your company (${context.yourCompany || 'Veda AI Lab'}) and succinctly pitch a few products/services that align perfectly with their work. Use the provided VEDA brochure context and LEAD PROFILE to select the most relevant products.
+5. Emphasize that gaining knowledge from their experience would be really helpful in improving your products and growing your overall company.
+6. State clearly that you would definitely like to talk, gain knowledge, and share valuable insights with each other. Look forward to a positive response.
+7. Format: Write in a warm, human, and compelling manner. There are no length limits.`,
   };
 
   const db = getDatabase();

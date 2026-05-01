@@ -35,12 +35,12 @@ export async function generateChatbotReply(
   const objectiveInstructions: Record<string, string> = {
     build_rapport:
       `OBJECTIVE: BUILD RAPPORT
-1. Scan the full brochure text for the exact service category in "CORE SERVICES & METRICS" that aligns with their role ("${role}").
-2. Write a crisp, specific opening message to ${firstName} at ${company}.
-3. Reference a REAL pain point they likely face (e.g., manual repetitive tasks, disconnected ERP data, slow reporting, lack of in-house AI talent if they are an agency).
-4. Subtly signal that ${context.yourCompany || 'your agency'} solves this.
-5. End with an open question that invites them to talk about their current challenges.
-6. DO NOT pitch yet. DO NOT mention a meeting yet. Keep it under 3 sentences.`,
+1. Start by warmly appreciating them for connecting (e.g., "Great to connect with you!", "Thanks for accepting my connection!").
+2. Write a crisp, conversational opening message to ${firstName} at ${company}.
+3. USE THE CONTEXT: Actively analyze their LEAD PROFILE and the CONVERSATION SO FAR. Use your Veda AI Lab knowledge invisibly as a framework to form a highly intelligent, tailored question about their specific industry/role.
+4. DO NOT pitch your product or mention your solutions. DO NOT say "we solve this" or "our work with similar organizations". Your intent is purely networking and learning.
+5. Ask how their organization works, how they handle their specific role so effectively, or what kind of unique difficulties they face.
+6. CLOSING CTA: Explicitly express your desire to learn from them with a casual phrase similar to: "I'd love to hear your thoughts so we can exchange knowledge" or "It would be great to learn from your experience." Keep the total message under 3-4 sentences.`,
 
     share_value:
       `OBJECTIVE: SHARE VALUE

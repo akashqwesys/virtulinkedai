@@ -75,6 +75,7 @@ export default function Campaigns() {
 
   // Creation Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createStep, setCreateStep] = useState<"details" | "import">("details");
   const [newCampaignName, setNewCampaignName] = useState("");
   const [newCampaignDesc, setNewCampaignDesc] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -82,13 +83,10 @@ export default function Campaigns() {
   
   const [isSavingSteps, setIsSavingSteps] = useState(false);
 
-  // Import Profiles Modal
-  const [showImportModal, setShowImportModal] = useState(false);
+  // Import State for Create Modal
   const [importMode, setImportMode] = useState<"profiles" | "page">("profiles");
   const [importUrls, setImportUrls] = useState("");
   const [importPageUrl, setImportPageUrl] = useState("");
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<string | null>(null);
 
   // Lead Summary Modal
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -184,28 +182,65 @@ export default function Campaigns() {
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
+    setCreateStep("details");
     setNewCampaignName("");
     setNewCampaignDesc("");
     setCreateError(null);
     setIsCreating(false);
+    setImportUrls("");
+    setImportPageUrl("");
   };
 
   const handleCreateCampaign = async () => {
     if (!newCampaignName.trim() || isCreating) return;
+    
+    if (importMode === "profiles" && importUrls.trim()) {
+      const urls = importUrls
+        .split("\n")
+        .map(u => u.trim())
+        .filter(u => u.length > 0 && u.includes("linkedin.com"));
+      if (urls.length === 0) {
+        setCreateError("No valid LinkedIn URLs found. Paste one URL per line.");
+        return;
+      }
+    }
+    if (importMode === "page" && importPageUrl.trim()) {
+      if (!importPageUrl.includes("linkedin.com") && importPageUrl.startsWith("http")) {
+        setCreateError("Please enter a valid LinkedIn URL or a search keyword.");
+        return;
+      }
+    }
+
     setIsCreating(true);
     setCreateError(null);
     try {
+      let urls: string[] = [];
+      if (importMode === "profiles" && importUrls.trim()) {
+        urls = importUrls
+          .split("\n")
+          .map(u => u.trim())
+          .filter(u => u.length > 0 && u.includes("linkedin.com"));
+      }
+
       const res = await window.api.campaigns.create({
         name: newCampaignName,
         description: newCampaignDesc,
-        leadUrls: [] // Can be updated later or via import
+        leadUrls: urls
       });
       if (res.success) {
+        const campaignId = res.campaignId;
+        
+        if (importMode === "page" && importPageUrl.trim()) {
+          (window as any).api.campaigns.importFromPage({
+            campaignId: campaignId,
+            pageUrl: importPageUrl.trim(),
+          }).catch(console.error);
+        }
+
         closeCreateModal();
-        // Reload list
         const data = await window.api.campaigns.list();
         setCampaigns(data.map((c: any) => ({ ...c, leads: [] })));
-        setSelectedCampaignId(res.campaignId);
+        setSelectedCampaignId(campaignId);
         setActiveTab("workflow");
       } else {
         setCreateError("Failed to create campaign. Please try again.");
@@ -218,78 +253,7 @@ export default function Campaigns() {
     }
   };
 
-  const handleImportProfiles = async () => {
-    if (!importUrls.trim() || !selectedCampaignId || isImporting) return;
-    setIsImporting(true);
-    setImportResult(null);
-    try {
-      const urls = importUrls
-        .split("\n")
-        .map(u => u.trim())
-        .filter(u => u.length > 0 && u.includes("linkedin.com"));
-      if (urls.length === 0) {
-        setImportResult("❌ No valid LinkedIn URLs found. Paste one URL per line.");
-        setIsImporting(false);
-        return;
-      }
-      const res = await (window as any).api.campaigns.addLeads({
-        campaignId: selectedCampaignId,
-        leadUrls: urls,
-      });
-      if (res.success) {
-        setImportResult(`✅ Added ${res.added} lead(s).${res.duplicates > 0 ? ` ${res.duplicates} duplicate(s) skipped.` : ""}`);
-        setImportUrls("");
-        setShowImportModal(false);
-        setImportResult(null);
-      } else {
-        setImportResult("❌ Failed to import leads.");
-      }
-    } catch (e) {
-      console.error("Import failed", e);
-      setImportResult("❌ An error occurred while importing.");
-    }
-    setIsImporting(false);
-  };
 
-  const handlePageImport = async () => {
-    if (!importPageUrl.trim() || !selectedCampaignId || isImporting) return;
-    
-    let urlToImport = importPageUrl.trim();
-    
-    if (!urlToImport.startsWith("http")) {
-      setImportResult(`🔍 Will perform human-centric search for "${urlToImport}"...`);
-      // Do NOT convert to a direct URL here. Let the backend handle the physical search bar typing.
-    } else if (!urlToImport.includes("linkedin.com")) {
-      setImportResult("❌ Please enter a valid LinkedIn URL (search results, company page, or alumni page) or a search keyword.");
-      return;
-    }
-
-    setIsImporting(true);
-    setImportResult("🔍 Scanning page... This may take 30–60 seconds. You can close this modal.");
-
-    // Close modal after a short delay so user knows it's running in background
-    setTimeout(() => {
-      setShowImportModal(false);
-      setImportPageUrl("");
-    }, 1500);
-
-    // Run the actual import asynchronously without blocking
-    try {
-      const res = await (window as any).api.campaigns.importFromPage({
-        campaignId: selectedCampaignId,
-        pageUrl: urlToImport,
-      });
-      if (res.success) {
-        setImportResult(`✅ AI imported ${res.added} lead(s) from the page.${res.matched > 0 ? ` ${res.matched} matched existing leads.` : ""}${res.duplicates > 0 ? ` ${res.duplicates} duplicate(s) skipped.` : ""}`);
-      } else {
-        setImportResult(`❌ ${res.error || "Failed to import from page. Make sure the browser is running and you are logged into LinkedIn."}`);
-      }
-    } catch (e) {
-      console.error("Page import failed", e);
-      setImportResult("❌ An error occurred. Make sure the browser is running and you are logged into LinkedIn.");
-    }
-    setIsImporting(false);
-  };
 
 
   const handleDeleteCampaign = async (campaignId: string) => {
@@ -485,70 +449,158 @@ export default function Campaigns() {
             }}
             onClick={(e) => { if (e.target === e.currentTarget && !isCreating) closeCreateModal(); }}
           >
-            <div className="card" style={{ width: "450px" }}>
-              <h2 className="text-xl font-bold mb-4">Create New Campaign</h2>
-              <div className="mb-4">
-                <label className="block text-sm font-semibold mb-2">
-                  Campaign Name
-                </label>
-                <input
-                  className="input"
-                  style={{ width: "100%" }}
-                  value={newCampaignName}
-                  onChange={(e) => setNewCampaignName(e.target.value)}
-                  placeholder="e.g. CEO Outreach"
-                  autoFocus
-                  disabled={isCreating}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleCreateCampaign(); }}
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-semibold mb-2">
-                  Description
-                </label>
-                <textarea
-                  className="input textarea"
-                  style={{ width: "100%" }}
-                  value={newCampaignDesc}
-                  onChange={(e) => setNewCampaignDesc(e.target.value)}
-                  placeholder="Campaign goals..."
-                  rows={3}
-                  disabled={isCreating}
-                />
-              </div>
-              {createError && (
-                <div style={{
-                  marginBottom: "12px",
-                  padding: "10px 14px",
-                  background: "rgba(239, 68, 68, 0.08)",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                  borderRadius: "8px",
-                  color: "var(--accent-danger)",
-                  fontSize: "13px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px"
-                }}>
-                  <AlertTriangle size={14} /> {createError}
-                </div>
+            <div className="card" style={{ width: "450px", maxHeight: "90vh", overflowY: "auto" }}>
+              {createStep === "details" ? (
+                <>
+                  <h2 className="text-xl font-bold mb-4">Create New Campaign</h2>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2">
+                      Campaign Name
+                    </label>
+                    <input
+                      className="input"
+                      style={{ width: "100%" }}
+                      value={newCampaignName}
+                      onChange={(e) => setNewCampaignName(e.target.value)}
+                      placeholder="e.g. CEO Outreach"
+                      autoFocus
+                      disabled={isCreating}
+                      onKeyDown={(e) => { if (e.key === "Enter" && newCampaignName.trim()) setCreateStep("import"); }}
+                    />
+                  </div>
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      className="input textarea"
+                      style={{ width: "100%" }}
+                      value={newCampaignDesc}
+                      onChange={(e) => setNewCampaignDesc(e.target.value)}
+                      placeholder="Campaign goals..."
+                      rows={3}
+                      disabled={isCreating}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={closeCreateModal}
+                      disabled={isCreating}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => setCreateStep("import")}
+                      disabled={!newCampaignName.trim() || isCreating}
+                      style={{ minWidth: "140px" }}
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-bold mb-4">Import Leads</h2>
+                  {/* Mode Toggle */}
+                  <div style={{ display: "flex", gap: "6px", marginBottom: "20px", background: "var(--bg-elevated)", padding: "4px", borderRadius: "10px" }}>
+                    <button
+                      onClick={() => { setImportMode("profiles"); setCreateError(null); }}
+                      style={{
+                        flex: 1, padding: "8px 12px", borderRadius: "7px", border: "none",
+                        fontWeight: 600, fontSize: "0.8125rem", cursor: "pointer", transition: "all 0.18s",
+                        background: importMode === "profiles" ? "var(--accent-primary)" : "transparent",
+                        color: importMode === "profiles" ? "#fff" : "var(--text-muted)",
+                      }}
+                    ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><User size={14}/> Profile URLs</span></button>
+                    <button
+                      onClick={() => { setImportMode("page"); setCreateError(null); }}
+                      style={{
+                        flex: 1, padding: "8px 12px", borderRadius: "7px", border: "none",
+                        fontWeight: 600, fontSize: "0.8125rem", cursor: "pointer", transition: "all 0.18s",
+                        background: importMode === "page" ? "var(--accent-primary)" : "transparent",
+                        color: importMode === "page" ? "#fff" : "var(--text-muted)",
+                      }}
+                    ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><Bot size={14}/> AI Page Import</span></button>
+                  </div>
+
+                  {/* Profile URLs Mode */}
+                  {importMode === "profiles" && (
+                    <>
+                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginBottom: "12px", lineHeight: 1.5 }}>
+                        Paste individual LinkedIn profile URLs — one per line. Each will be scraped and added as a lead to this campaign.
+                      </p>
+                      <textarea
+                        className="input"
+                        rows={7}
+                        placeholder={"https://www.linkedin.com/in/username1/\nhttps://www.linkedin.com/in/username2/"}
+                        value={importUrls}
+                        onChange={(e) => setImportUrls(e.target.value)}
+                        disabled={isCreating}
+                        style={{ width: "100%", resize: "vertical", marginBottom: "12px", fontFamily: "monospace", fontSize: "0.8125rem" }}
+                      />
+                    </>
+                  )}
+
+                  {/* AI Page Import Mode */}
+                  {importMode === "page" && (
+                    <>
+                      <div style={{
+                        padding: "12px 14px", marginBottom: "14px", borderRadius: "10px",
+                        background: "rgba(99, 102, 241, 0.07)", border: "1px solid rgba(99, 102, 241, 0.2)",
+                        fontSize: "0.8125rem", lineHeight: 1.6, color: "var(--text-secondary)",
+                      }}>
+                        <strong style={{ color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "6px" }}><Bot size={16}/> AI-Powered Bulk Import</strong><div style={{marginTop:"4px"}}/>
+                        Paste a LinkedIn <strong>search results page</strong>, <strong>company "People" page</strong>, or <strong>alumni page</strong> URL.
+                      </div>
+                      <input
+                        className="input"
+                        placeholder="https://www.linkedin.com/search/results/people/?keywords=CTO&..."
+                        value={importPageUrl}
+                        onChange={(e) => setImportPageUrl(e.target.value)}
+                        disabled={isCreating}
+                        style={{ width: "100%", marginBottom: "8px", fontFamily: "monospace", fontSize: "0.8125rem" }}
+                      />
+                    </>
+                  )}
+
+                  {createError && (
+                    <div style={{
+                      marginBottom: "12px",
+                      padding: "10px 14px",
+                      background: "rgba(239, 68, 68, 0.08)",
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      borderRadius: "8px",
+                      color: "var(--accent-danger)",
+                      fontSize: "13px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px"
+                    }}>
+                      <AlertTriangle size={14} /> {createError}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setCreateStep("details")}
+                      disabled={isCreating}
+                    >
+                      Back
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleCreateCampaign}
+                      disabled={isCreating || (importMode === "profiles" && !importUrls.trim()) || (importMode === "page" && !importPageUrl.trim())}
+                      style={{ minWidth: "140px" }}
+                    >
+                      {isCreating ? "Creating..." : "Create Campaign"}
+                    </button>
+                  </div>
+                </>
               )}
-              <div className="flex justify-end gap-3">
-                <button
-                  className="btn btn-secondary"
-                  onClick={closeCreateModal}
-                  disabled={isCreating}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleCreateCampaign}
-                  disabled={!newCampaignName.trim() || isCreating}
-                  style={{ minWidth: "140px" }}
-                >
-                  {isCreating ? "Creating..." : "Continue to Workflow"}
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -586,7 +638,6 @@ export default function Campaigns() {
             <p className="text-muted">{selectedCampaign.description}</p>
           </div>
           <div className="flex gap-3">
-            <button className="btn btn-secondary" onClick={() => { setShowImportModal(true); setImportResult(null); }}>Import Profiles</button>
             <button
               className={`btn ${selectedCampaign.status === "active" ? "btn-secondary" : "btn-primary"}`}
               onClick={async () => {
@@ -1132,119 +1183,7 @@ export default function Campaigns() {
         )})()}
       </div>
 
-      {/* Import Profiles Modal */}
-      {showImportModal && (
-        <Modal
-          isOpen={showImportModal}
-          onClose={() => { setShowImportModal(false); setImportResult(null); }}
-          title="Import Leads"
-          icon={<Download size={20} />}
-          disableClose={isImporting}
-        >
 
-            {/* Mode Toggle */}
-            <div style={{ display: "flex", gap: "6px", marginBottom: "20px", background: "var(--bg-elevated)", padding: "4px", borderRadius: "10px" }}>
-              <button
-                onClick={() => { setImportMode("profiles"); setImportResult(null); }}
-                style={{
-                  flex: 1, padding: "8px 12px", borderRadius: "7px", border: "none",
-                  fontWeight: 600, fontSize: "0.8125rem", cursor: "pointer", transition: "all 0.18s",
-                  background: importMode === "profiles" ? "var(--accent-primary)" : "transparent",
-                  color: importMode === "profiles" ? "#fff" : "var(--text-muted)",
-                }}
-              ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><User size={14}/> Profile URLs</span></button>
-              <button
-                onClick={() => { setImportMode("page"); setImportResult(null); }}
-                style={{
-                  flex: 1, padding: "8px 12px", borderRadius: "7px", border: "none",
-                  fontWeight: 600, fontSize: "0.8125rem", cursor: "pointer", transition: "all 0.18s",
-                  background: importMode === "page" ? "var(--accent-primary)" : "transparent",
-                  color: importMode === "page" ? "#fff" : "var(--text-muted)",
-                }}
-              ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><Bot size={14}/> AI Page Import</span></button>
-            </div>
-
-            {/* Profile URLs Mode */}
-            {importMode === "profiles" && (
-              <>
-                <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginBottom: "12px", lineHeight: 1.5 }}>
-                  Paste individual LinkedIn profile URLs — one per line. Each will be scraped and added as a lead to this campaign.
-                </p>
-                <textarea
-                  className="input"
-                  rows={7}
-                  placeholder={"https://www.linkedin.com/in/username1/\nhttps://www.linkedin.com/in/username2/"}
-                  value={importUrls}
-                  onChange={(e) => setImportUrls(e.target.value)}
-                  disabled={isImporting}
-                  style={{ width: "100%", resize: "vertical", marginBottom: "12px", fontFamily: "monospace", fontSize: "0.8125rem" }}
-                />
-              </>
-            )}
-
-            {/* AI Page Import Mode */}
-            {importMode === "page" && (
-              <>
-                <div style={{
-                  padding: "12px 14px", marginBottom: "14px", borderRadius: "10px",
-                  background: "rgba(99, 102, 241, 0.07)", border: "1px solid rgba(99, 102, 241, 0.2)",
-                  fontSize: "0.8125rem", lineHeight: 1.6, color: "var(--text-secondary)",
-                }}>
-                  <strong style={{ color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "6px" }}><Bot size={16}/> AI-Powered Bulk Import</strong><div style={{marginTop:"4px"}}/>
-                  Paste a LinkedIn <strong>search results page</strong>, <strong>company "People" page</strong>, or <strong>alumni page</strong> URL.
-                  The AI will automatically:
-                  <ul style={{ marginTop: "8px", paddingLeft: "18px", color: "var(--text-muted)", marginBottom: 0 }}>
-                    <li>Extract all visible profiles from the page</li>
-                    <li>Match candidates against existing leads by role, company &amp; description</li>
-                    <li>Add new qualified leads directly to this campaign</li>
-                  </ul>
-                </div>
-                <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "8px" }}>
-                  Supported: <code style={{ opacity: 0.8 }}>linkedin.com/search/results/people/...</code> · <code style={{ opacity: 0.8 }}>linkedin.com/company/.../people</code>
-                </p>
-                <input
-                  className="input"
-                  placeholder="https://www.linkedin.com/search/results/people/?keywords=CTO&..."
-                  value={importPageUrl}
-                  onChange={(e) => setImportPageUrl(e.target.value)}
-                  disabled={isImporting}
-                  style={{ width: "100%", marginBottom: "8px", fontFamily: "monospace", fontSize: "0.8125rem" }}
-                />
-                <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "12px" }}>
-                  ⚠️ Browser must be running and logged into LinkedIn.
-                </p>
-              </>
-            )}
-
-            {/* Result Banner */}
-            {importResult && (
-              <div style={{
-                padding: "10px 14px", marginBottom: "12px", borderRadius: "8px", fontSize: "0.8125rem", lineHeight: 1.5,
-                background: importResult.startsWith("✅") ? "rgba(5, 150, 105, 0.08)" : "rgba(220, 38, 38, 0.08)",
-                border: importResult.startsWith("✅") ? "1px solid rgba(5, 150, 105, 0.2)" : "1px solid rgba(220, 38, 38, 0.2)",
-                color: importResult.startsWith("✅") ? "var(--accent-success)" : "var(--accent-danger)",
-              }}>
-                {importResult}
-              </div>
-            )}
-
-            {/* Actions */}
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-              <button className="btn btn-secondary" onClick={() => { setShowImportModal(false); setImportResult(null); }} disabled={isImporting}>
-                Cancel
-              </button>
-              {importMode === "profiles" ? (
-                <button className="btn btn-primary" onClick={handleImportProfiles} disabled={!importUrls.trim() || isImporting} style={{ minWidth: "140px" }}>
-                  {isImporting ? <><Zap size={14} className="animate-spin"/> Importing...</> : <><Download size={14}/> Import Profiles</>}
-                </button>
-              ) : (
-                <button className="btn btn-primary" onClick={handlePageImport} disabled={!importPageUrl.trim() || isImporting} style={{ minWidth: "160px" }}>
-                  {isImporting ? <><Bot size={14} className="animate-pulse"/> AI Scanning...</> : <><Bot size={14}/> Import from Page</>}
-                </button>
-              )}
-            </div>
-        </Modal>
-      )}
 
       {/* Lead Summary Modal */}
       {selectedLead && (

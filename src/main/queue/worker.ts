@@ -129,6 +129,10 @@ export function updateWorkerSettings(settings: any): void {
   );
 }
 
+export function getLimitManager(): DailyLimitManager | null {
+  return _limitManager;
+}
+
 // ============================================================
 // Safety Gate — Check working hours before any action
 // ============================================================
@@ -280,13 +284,13 @@ jobQueue.process<ScrapeProfilePayload>(
       campaignId,
     });
 
-    // Enqueue the next step — send connection request (with 5-15s human delay)
+    // Enqueue the next step — send connection request immediately (delay is now handled inside the job to preserve lock)
     jobQueue.enqueue<SendConnectionPayload>(
       JOB_TYPES.SEND_CONNECTION,
       { leadId, linkedinUrl, campaignId },
       {
-        delayMs: 5000 + Math.random() * 10000,
-        priority: 5,
+        delayMs: 0,
+        priority: 100,
       },
     );
   },
@@ -304,6 +308,9 @@ jobQueue.process<SendConnectionPayload>(
 
     const { leadId, linkedinUrl, campaignId } = job.payload;
     enforceCampaignActive(campaignId);
+
+    // Simulate human delay BEFORE acting, while holding the queue lock to prevent other tasks from interrupting
+    await new Promise((r) => setTimeout(r, 5000 + Math.random() * 10000));
 
     if (!_limitManager?.canPerform("connectionRequests"))
       throw new Error("Daily connection request limit reached");
@@ -369,7 +376,7 @@ jobQueue.process<SendConnectionPayload>(
           jobQueue.enqueue<SendIntroEmailPayload>(
             JOB_TYPES.SEND_INTRO_EMAIL,
             { leadId, campaignId, recipientEmail: lead.email },
-            { delayMs: 1000, priority: 5 }
+            { delayMs: 0, priority: 100 }
           );
         }
         
@@ -416,7 +423,7 @@ jobQueue.process<SendConnectionPayload>(
         jobQueue.enqueue<SendIntroEmailPayload>(
           JOB_TYPES.SEND_INTRO_EMAIL,
           { leadId, campaignId, recipientEmail },
-          { delayMs: 3000, priority: 8 },
+          { delayMs: 0, priority: 100 },
         );
         console.log(`[Worker] SEND_INTRO_EMAIL enqueued for ${profile.firstName} ${profile.lastName} → ${recipientEmail}`);
       } else {
@@ -451,8 +458,8 @@ jobQueue.process<SendConnectionPayload>(
         JOB_TYPES.SEND_INTRO_EMAIL,
         { leadId, campaignId, recipientEmail },
         {
-          delayMs: 1000, // Trigger immediately after connection
-          priority: 4,
+          delayMs: 0, // Delay handled inside the job to preserve sequence lock
+          priority: 100,
         },
       );
     }
@@ -572,6 +579,9 @@ jobQueue.process<SendIntroEmailPayload>(
     const { leadId, campaignId, recipientEmail } = job.payload;
     enforceCampaignActive(campaignId);
 
+    // Add a slight delay to ensure the queue remains locked and simulates natural flow
+    await new Promise((r) => setTimeout(r, 1000));
+
     const db = getDatabase();
     const lead = db
       .prepare("SELECT * FROM leads WHERE id = ?")
@@ -619,6 +629,9 @@ jobQueue.process<SendFollowupEmailPayload>(
   async (job: Job<SendFollowupEmailPayload>) => {
     const { leadId, campaignId, recipientEmail } = job.payload;
     enforceCampaignActive(campaignId);
+
+    // Add a slight delay to ensure the queue remains locked and simulates natural flow
+    await new Promise((r) => setTimeout(r, 1000));
 
     const db = getDatabase();
     const lead = db
@@ -782,7 +795,7 @@ jobQueue.process<EnrichLeadEmailPayload>(
       jobQueue.enqueue<SendFollowupEmailPayload>(
         JOB_TYPES.SEND_FOLLOWUP_EMAIL,
         { leadId, campaignId, recipientEmail: lead.email },
-        { delayMs: 500, priority: 4 },
+        { delayMs: 0, priority: 100 },
       );
       return;
     }
@@ -819,7 +832,7 @@ jobQueue.process<EnrichLeadEmailPayload>(
     jobQueue.enqueue<SendFollowupEmailPayload>(
       JOB_TYPES.SEND_FOLLOWUP_EMAIL,
       { leadId, campaignId, recipientEmail: enrichedEmail },
-      { delayMs: 2000, priority: 4 },
+      { delayMs: 0, priority: 100 },
     );
   },
 );

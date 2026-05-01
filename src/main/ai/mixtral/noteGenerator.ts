@@ -72,7 +72,7 @@ ${previousInteractions}
 
 === FULL TASK INSTRUCTIONS ===
 The system has provided you with the COMPLETE narrative text of the "Veda AI Lab — Partnership Brochure 2026" above.
-Your task is to write a LinkedIn connection request note (1-2 sentences MAX) to this lead.
+Your task is to write a LinkedIn connection request note (2-3 short sentences MAX) to this lead.
 
 You must meticulously analyze the brochure text and cross-reference it with the LEAD PROFILE using this algorithm:
 
@@ -91,13 +91,15 @@ STEP 3: CRAFT THE HOOK
 Write the note as a peer. ${context.yourName} is a senior expert from Veda AI Lab (which has 15+ years experience, 200+ projects). Sound like a practitioner, not a salesperson.
 
 STRICT RULES (BREAKING THESE IS A FAILURE):
-1. MAIN INTENTION: Your goal is to build a community and connect with the lead. Focus on mutual contribution and help. If the lead shows buying interest (in PREVIOUS INTERACTIONS), gracefully reflect that, but otherwise, balance networking with subtle service awareness.
-2. ZERO HARD SELLING: Never mention pricing, never explicitly ask for a meeting on the first note, never bluntly say "we can help you".
+1. MAIN INTENTION: Your goal is PURELY to connect and network. DO NOT suggest discussing anything ("let's discuss", "explore how we can"). Just compliment them, share a mutual interest, or state a shared philosophy. Focus entirely on THEM and your shared professional interests.
+2. ZERO HARD SELLING: Never mention pricing, never explicitly ask for a meeting on the first note, never bluntly say "we can help you", and never propose exploring solutions.
 3. NO CLICHÉS: Never use "I came across your profile", "I noticed", "I'd love to connect", "As a fellow professional", "Great to see".
 4. SUBTLETY: If you reference a success story, do it subtly. (e.g., "Been exploring how agencies are cutting manual work by 120hrs/mo..." rather than "We saved an agency 120hrs").
 5. FORMAT: Open with "Hi [FirstName]," and deliver the hook immediately. Make sure you mention any relevant previous interactions naturally in the DM if applicable.
-6. LENGTH: Absolute constraint - must be under 280 characters.
+6. LENGTH: Absolute constraint - must be under 280 characters (NOT words).
 7. OUTPUT FORMAT: Output ONLY the message text. Do NOT include any explanations, brackets, notes, or metadata.
+8. INFORMAL TONE: Write extremely naturally. Use contractions (I'm, you're). Don't be stiff or overly formal. Speak like a human grabbing coffee with a peer.
+9. CLOSING: ALWAYS end the note smoothly with "Would love to connect!" or a very similar casual phrase that flows in perfect synergy with your sentence.
 
 Write the connection note now:`;
 

@@ -42,6 +42,31 @@ temp_pdf/
 # Temporary build configs
 electron.vite.config.*.mjs
 
-# Root level scratch scripts and logs
-# (Keeping these included as requested for "whole code")
-# !electron.vite.config.ts
+# Testing and Scratch files
+test-*.js
+test-*.mjs
+test_*.js
+puppeteer-test.mjs
+scratch_*.js
+/*.html
+/*.png
+/*.txt
+/*.pdf
+/extracted_pages/
+/extracted_plan.txt
+plan_*.txt
+veda_context.txt
+Implementation Plan.pdf
+*.mjs
+*.cjs
+*.mjs.map
+*.cjs.map
+count.js
+!electron.vite.config.ts
+!src/**/index.html
+!build/icon.png
+!build/background.png
+
+# External testing environment (if repository is moved to root)
+ai-tester/
+__MACOSX/
