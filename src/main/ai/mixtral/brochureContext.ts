@@ -1,14 +1,14 @@
 /**
- * VEDA AI LAB — Comprehensive Narrative Knowledge Base
+ * Veda AI Lab LLC — Comprehensive Narrative Knowledge Base
  *
- * This context provides an exhaustive, highly detailed understanding of Veda AI Lab,
+ * This context provides an exhaustive, highly detailed understanding of Veda AI Lab LLC,
  * translated from the 18-page Partnership Brochure 2026 into coherent, flowing sentences.
  * It contains every single metric, service detail, use case, and partnership rule,
  * structured perfectly for the AI to understand deeply without raw/confusing text.
  */
 
 export const VEDA_CONTEXT = `
-=== VEDA AI LAB: COMPLETE COMPANY OVERVIEW & CAPABILITIES ===
+=== Veda AI Lab LLC: COMPLETE COMPANY OVERVIEW & CAPABILITIES ===
 
 COMPANY IDENTITY & SCALE
 Veda AI Lab LLC is a registered entity in Kentucky, USA, operating as the premier "Invisible AI R&D Partner" for digital agencies. The company specializes in delivering enterprise-grade, white-label AI solutions including autonomous AI agents, intelligent chatbots, workflow automation, self-hosted LLMs, and ERP intelligence. Operating with a strict NDA-first policy and aligned with ISO 27001 and SOC 2 Type II security practices, Veda ensures complete operational stealth. Currently, the company serves over 50 agency partners across 3 countries, having deployed more than 200 custom solutions. They maintain a 99.9% uptime SLA and guarantee partner onboarding in under 48 hours.
@@ -17,7 +17,7 @@ ORIGIN STORY
 The company's foundation rests on over 15 years of deep enterprise software experience. It began in 2011 with a vision to build robust enterprise solutions. By 2013, operating as Qwesys Digital Solutions, the team was heavily focused on ERP development and deep customization for platforms like ERPNext, Zoho, SAP, and Oracle. In 2022, responding directly to agency partners demanding intelligent automation, the company underwent an AI transformation. Today, Veda AI Lab LLC stands exclusively to serve agencies with powerful white-label AI capabilities.
 
 THE INVISIBLE PARTNERSHIP MODEL
-Veda AI Lab is engineered specifically for agency success through a 100% invisible partnership model. Every engagement begins with a strict NDA, allowing the team to work seamlessly under the agency's own email domain and Slack workspace so that the end clients never know Veda exists. Pricing is highly predictable, utilizing fixed-cost and retainer models to ensure agencies maintain healthy margins with zero scope creep. Veda moves at agency speed, delivering working prototypes in 5 to 7 days and full production solutions in 2 to 4 weeks. Communication is handled via dedicated Slack Connect channels directly with project leads, completely avoiding traditional support queues. Veda provides transparent reporting through weekly sprint updates, shared project boards, and milestone demos. Upon full payment, the agency or their client receives a full intellectual property transfer, taking complete ownership of all source code, documentation, and deployment guides. 
+Veda AI Lab LLC is engineered specifically for agency success through a 100% invisible partnership model. Every engagement begins with a strict NDA, allowing the team to work seamlessly under the agency's own email domain and Slack workspace so that the end clients never know Veda exists. Pricing is highly predictable, utilizing fixed-cost and retainer models to ensure agencies maintain healthy margins with zero scope creep. Veda moves at agency speed, delivering working prototypes in 5 to 7 days and full production solutions in 2 to 4 weeks. Communication is handled via dedicated Slack Connect channels directly with project leads, completely avoiding traditional support queues. Veda provides transparent reporting through weekly sprint updates, shared project boards, and milestone demos. Upon full payment, the agency or their client receives a full intellectual property transfer, taking complete ownership of all source code, documentation, and deployment guides. 
 
 CORE SERVICES & METRICS
 
@@ -66,8 +66,8 @@ Veda believes in earning trust through delivery. They offer flexible milestone-b
 - The Growth plan ($5,000/month) is the most popular, providing 100 development hours across 3 active projects with a dedicated project manager.
 - The Enterprise plan ($8,000/month) provides 200+ development hours for unlimited projects, a fully dedicated team, and custom 24/7 SLAs.
 
-By partnering with Veda AI Lab, agencies can stop turning away highly lucrative AI projects and immediately start delivering cutting-edge AI solutions to their clients with absolutely zero hiring, zero training, and zero risk.
-=== END OF VEDA AI LAB CONTEXT ===
+By partnering with Veda AI Lab LLC, agencies can stop turning away highly lucrative AI projects and immediately start delivering cutting-edge AI solutions to their clients with absolutely zero hiring, zero training, and zero risk.
+=== END OF Veda AI Lab LLC CONTEXT ===
 `;
 
 export const BROCHURE_CONTEXT = VEDA_CONTEXT;

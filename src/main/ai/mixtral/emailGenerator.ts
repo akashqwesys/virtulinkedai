@@ -5,7 +5,7 @@ import { getDatabase, logActivity } from "../../storage/database";
 /**
  * Generate a personalized outreach email
  *
- * This uses the full narrative text of the Veda AI Lab Partnership Brochure 
+ * This uses the full narrative text of the Veda AI Lab LLC Partnership Brochure 
  * (injected by the client via VEDA_CONTEXT) to craft hyper-relevant emails.
  */
 export async function generatePersonalizedEmail(
@@ -20,17 +20,31 @@ export async function generatePersonalizedEmail(
   },
   settings: AppSettings["ai"],
 ): Promise<{ subject: string; body: string }> {
+  // Compute a specific meeting day: 2 weekdays from today, skipping weekends
+  const getMeetingDay = (): string => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const date = new Date();
+    let added = 0;
+    while (added < 2) {
+      date.setDate(date.getDate() + 1);
+      const dow = date.getDay();
+      if (dow !== 0 && dow !== 6) added++;
+    }
+    return days[date.getDay()];
+  };
+  const suggestedMeetingDay = getMeetingDay();
+
   const typeInstructions: Record<string, string> = {
     intro: `EMAIL TYPE: INITIAL OUTREACH (INTRO)
-Your goal is purely networking and establishing a genuine connection. There must be NO intention of selling a product or pitching services.
+Your goal is purely networking and establishing a genuine, curiosity-driven connection. There must be NO intention of selling a product or pitching services.
 STRATEGY & ALGORITHM:
-1. Open the email by explicitly stating that you have already sent them a connection request on LinkedIn.
-2. Express that their LinkedIn profile impressed you and you find it genuinely inspiring. Reference specific details from their profile to show you've paid attention.
-3. Express a desire to talk more, share thought processes, and exchange knowledge with each other.
-4. Use the provided VEDA brochure context invisibly as a framework to formulate intelligent thoughts or questions about their industry, but DO NOT pitch your company's services.
-5. Reference the message you already sent in the connection note (found in PREVIOUS INTERACTIONS) to ensure continuity.
-6. Include your LinkedIn account details/URL and encourage them to accept the request so you can talk further.
-7. Format: Write in a warm, human, and strictly networking-focused manner. Do not include any sales metrics, prototypes, or scoping offers. There are no length limits.`,
+1. Open the email by mentioning that you have sent them a connection request on LinkedIn. DO NOT mention any timeline or date of when the request was sent (e.g., never say "yesterday", "a few days ago", "last week", etc.). Simply state it as a fact: "I've sent you a connection request on LinkedIn."
+2. Express that their LinkedIn profile genuinely impressed and inspired you. Reference SPECIFIC details from their profile (role, company, achievements, or experience) to show you've paid close attention — make it feel personal, not generic.
+3. Lead with curiosity: The dominant tone of this email should be that you are excited and curious to connect with them. You want to understand how they think, learn from their journey, and exchange ideas. This is NOT a sales email — it is a "I found your profile fascinating and want to connect as peers" email.
+4. Use the PREVIOUS INTERACTIONS section ONLY as invisible context to maintain continuity of tone. DO NOT quote, reference, or name the previous connection note message. DO NOT say "my previous message was..." or mention the subject/title of any prior note. Simply let the spirit of that note naturally flow into this email.
+5. Use the provided VEDA brochure context invisibly as a framework to formulate one intelligent, thoughtful question or reflection about their specific industry or challenges — but DO NOT pitch your company's services in any way.
+6. Close by including your LinkedIn URL and warmly encouraging them to accept the request so the conversation can continue.
+7. Format: Write in a warm, human, peer-to-peer, and strictly networking-focused manner. The email should feel like it comes from someone genuinely excited to meet a new professional peer — not a salesperson. Do not include any sales metrics, prototypes, or scoping offers. There are no length limits.`,
 
     follow_up: `EMAIL TYPE: FOLLOW-UP (NO REPLY AFTER 3 DAYS)
 Your goal is purely networking and learning. There must be NO intention of selling a product or pitching services.
@@ -48,9 +62,10 @@ Your goal is to build a lasting community relationship immediately after they ac
 STRATEGY & ALGORITHM:
 1. Start by warmly appreciating them for connecting on LinkedIn.
 2. DO NOT pitch your product or mention your solutions. DO NOT say "we solve this" or "our work with similar organizations". Your intent is purely networking and learning.
-3. Actively analyze their LEAD PROFILE. Use your Veda AI Lab knowledge invisibly as a framework to form a highly intelligent, tailored question about their specific industry/role.
+3. Actively analyze their LEAD PROFILE. Use your Veda AI Lab LLC knowledge invisibly as a framework to form a highly intelligent, tailored question about their specific industry/role.
 4. Ask how their organization works, how they handle their specific role so effectively, or what kind of unique difficulties they face.
-5. Explicitly express your desire to learn from them with a phrase similar to: "I'd love to hear your thoughts so we can exchange knowledge" or "It would be great to learn from your experience."`,
+5. Explicitly express your desire to learn from them with a phrase similar to: "I'd love to hear your thoughts so we can exchange knowledge" or "It would be great to learn from your experience."
+6. CALL TO ACTION (MEETING): Propose a casual meeting to discuss this further. Ask if they are available for a brief call or Teams meeting on ${suggestedMeetingDay} to exchange ideas. Use ONLY this specific day name — do NOT substitute a different day. Add a friendly, low-pressure note saying that if they are interested but ${suggestedMeetingDay} doesn't work, they can simply reply and you can connect at their convenience.`,
 
     meeting_confirm: `EMAIL TYPE: MEETING CONFIRMATION
 Your goal is to set expectations, build anticipation, and solidify the community connection.
@@ -70,7 +85,7 @@ STRATEGY & ALGORITHM:
 1. Open the email by mentioning that you have already tried to connect with them a few times and acknowledge that they must be very busy.
 2. Reiterate that you are very curious about their work after seeing their profile, and you want to share knowledge and communicate about a few things.
 3. Ask them to connect whenever they are free, either on LinkedIn (mention you already sent a request and share your direct LinkedIn URL) or by replying here on email.
-4. Briefly introduce your company (${context.yourCompany || 'Veda AI Lab'}) and succinctly pitch a few products/services that align perfectly with their work. Use the provided VEDA brochure context and LEAD PROFILE to select the most relevant products.
+4. Briefly introduce your company (${context.yourCompany || 'Veda AI Lab LLC'}) and succinctly pitch a few products/services that align perfectly with their work. Use the provided VEDA brochure context and LEAD PROFILE to select the most relevant products.
 5. Emphasize that gaining knowledge from their experience would be really helpful in improving your products and growing your overall company.
 6. State clearly that you would definitely like to talk, gain knowledge, and share valuable insights with each other. Look forward to a positive response.
 7. Format: Write in a warm, human, and compelling manner. There are no length limits.`,
@@ -108,11 +123,11 @@ STRATEGY & ALGORITHM:
     profile.education?.length ? `- Education: ${profile.education.map(e => `${e.degree} from ${e.school}`).join(', ')}` : null,
   ].filter(Boolean).join("\n");
 
-  const prompt = `You are writing a professional but warm email for LinkedIn outreach on behalf of ${context.yourName} from ${context.yourCompany || 'Veda AI Lab'}.
+  const prompt = `You are writing a professional but warm email for LinkedIn outreach on behalf of ${context.yourName} from ${context.yourCompany || 'Veda AI Lab LLC'}.
 
 === SENDER IDENTITY & CONTEXT ===
 - Name: ${context.yourName}
-- Company: ${context.yourCompany || 'Veda AI Lab'}
+- Company: ${context.yourCompany || 'Veda AI Lab LLC'}
 - Services: ${context.yourServices || 'White-label AI Agents, Chatbots, Workflow Automation, Self-Hosted LLMs, ERP Intelligence'}
 - Vision: ${context.yourVision || 'To build a strong community of innovators and empower businesses with seamless, invisible AI solutions.'}
 - LinkedIn URL: ${context.yourLinkedinUrl || 'https://www.linkedin.com/in/your-profile'}
@@ -124,7 +139,7 @@ ${contextBlock}
 ${previousInteractions}
 
 === FULL TASK INSTRUCTIONS ===
-The system has provided you with the COMPLETE narrative text of the "Veda AI Lab — Partnership Brochure 2026" above.
+The system has provided you with the COMPLETE narrative text of the "Veda AI Lab LLC — Partnership Brochure 2026" above.
 Your task is to write an email to this lead by meticulously analyzing the brochure text, incorporating the recipient's profile, and referencing the PREVIOUS INTERACTIONS (e.g., acknowledging that a connection request was just sent or a message was exchanged).
 
 ${typeInstructions[context.emailType]}
@@ -132,7 +147,7 @@ ${typeInstructions[context.emailType]}
 RULES:
 1. MAIN INTENTION: Your primary goal is to build a community, foster connections, and offer mutual help. Balance this networking approach with service value. If the lead has shown interest in buying, reflect that intent gracefully.
 2. NO LENGTH LIMITS: Write in a very effective and compelling manner. Take as much space as needed to deliver maximum value and build a strong connection.
-3. INCLUSIVE CONTEXT: Actively weave in the recipient's profile details, the Veda AI Lab brochure info, and all previously done interactions to make the email hyper-contextual.
+3. INCLUSIVE CONTEXT: Actively weave in the recipient's profile details, the Veda AI Lab LLC brochure info, and all previously done interactions to make the email hyper-contextual.
 4. Write both a subject line and body.
 5. Sound genuine, human, and peer-to-peer — avoid aggressive sales templates.
 6. Reference specific details about their work/company.

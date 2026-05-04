@@ -2098,12 +2098,12 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
         // Build conversation transcript
         const transcript = rawMsgs.length > 0
-          ? rawMsgs.map(m => `[${m.direction === 'outbound' ? 'You (Veda AI Lab)' : leadName || 'Lead'}]: ${m.content}`).join('\n')
+          ? rawMsgs.map(m => `[${m.direction === 'outbound' ? 'You (Veda AI Lab LLC)' : leadName || 'Lead'}]: ${m.content}`).join('\n')
           : '(No messages yet — this is the first message in the conversation.)';
 
         // Compose the prompt — no system prompt injection needed, generateWithOllama prepends VEDA_CONTEXT automatically
         const prompt = `
-You are a professional outreach specialist representing Veda AI Lab. Your goal is to write the NEXT best LinkedIn message to send to this lead.
+You are a professional outreach specialist representing Veda AI Lab LLC. Your goal is to write the NEXT best LinkedIn message to send to this lead.
 
 LEAD INFORMATION:
 - Name: ${leadName || 'Unknown'}
@@ -2114,13 +2114,13 @@ FULL CONVERSATION HISTORY:
 ${transcript}
 
 TASK:
-Based on the conversation context above and the Veda AI Lab knowledge base (see system context), write the single best next reply message.
+Based on the conversation context above and the Veda AI Lab LLC knowledge base (see system context), write the single best next reply message.
 
 GUIDELINES:
 - Keep it concise (2-4 sentences max), natural and human — not salesy or robotic
 - Continue naturally from the last message — don't repeat what was already said
 - Align with the lead's interest/context (their role, company, what they've asked)
-- Subtly position Veda AI Lab's relevant service if appropriate, but don't force it
+- Subtly position Veda AI Lab LLC's relevant service if appropriate, but don't force it
 - NO subject line. NO greeting like "Hi [Name]," — just the message body
 - Do NOT include any explanation, preamble, or meta-commentary — output ONLY the message text
 

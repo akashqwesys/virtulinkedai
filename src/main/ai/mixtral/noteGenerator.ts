@@ -5,7 +5,7 @@ import { getDatabase, logActivity } from "../../storage/database";
 /**
  * Generate a personalized connection request note (≤300 characters)
  *
- * This uses the full narrative text of the Veda AI Lab Partnership Brochure 
+ * This uses the full narrative text of the Veda AI Lab LLC Partnership Brochure 
  * (injected by the client via VEDA_CONTEXT) to craft hyper-relevant notes.
  */
 export async function generateConnectionNote(
@@ -57,11 +57,11 @@ export async function generateConnectionNote(
     .filter(Boolean)
     .join("\n");
 
-  const prompt = `You are crafting a LinkedIn connection request note on behalf of ${context.yourName}, representing ${context.yourCompany || 'Veda AI Lab'}.
+  const prompt = `You are crafting a LinkedIn connection request note on behalf of ${context.yourName}, representing ${context.yourCompany || 'Veda AI Lab LLC'}.
 
 === SENDER IDENTITY & CONTEXT ===
 - Name: ${context.yourName}
-- Company: ${context.yourCompany || 'Veda AI Lab'}
+- Company: ${context.yourCompany || 'Veda AI Lab LLC'}
 - Services: ${context.yourServices || 'Custom AI, ERP Intelligence, Automation'}
 
 === LEAD PROFILE ===
@@ -71,7 +71,7 @@ ${contextBlock}
 ${previousInteractions}
 
 === FULL TASK INSTRUCTIONS ===
-The system has provided you with the COMPLETE narrative text of the "Veda AI Lab — Partnership Brochure 2026" above.
+The system has provided you with the COMPLETE narrative text of the "Veda AI Lab LLC — Partnership Brochure 2026" above.
 Your task is to write a LinkedIn connection request note (2-3 short sentences MAX) to this lead.
 
 You must meticulously analyze the brochure text and cross-reference it with the LEAD PROFILE using this algorithm:
@@ -88,7 +88,7 @@ Select ONE specific concept from the brochure that aligns perfectly with the lea
 Do NOT list out services. Instead, use your knowledge of the brochure to speak their language. For example, if they are an Operations Director, you know Veda builds "ERP Intelligence" and "Workflow Automation". Mentioning "scaling operations" or "process bottlenecks" signals you understand their world.
 
 STEP 3: CRAFT THE HOOK
-Write the note as a peer. ${context.yourName} is a senior expert from Veda AI Lab (which has 15+ years experience, 200+ projects). Sound like a practitioner, not a salesperson.
+Write the note as a peer. ${context.yourName} is a senior expert from Veda AI Lab LLC (which has 15+ years experience, 200+ projects). Sound like a practitioner, not a salesperson.
 
 STRICT RULES (BREAKING THESE IS A FAILURE):
 1. MAIN INTENTION: Your goal is PURELY to connect and network. DO NOT suggest discussing anything ("let's discuss", "explore how we can"). Just compliment them, share a mutual interest, or state a shared philosophy. Focus entirely on THEM and your shared professional interests.

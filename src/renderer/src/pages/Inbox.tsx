@@ -673,7 +673,7 @@ export default function Inbox() {
                     id="inbox-ai-reply-btn"
                     onClick={generateAiReply}
                     disabled={isGeneratingAi}
-                    title="Generate an AI-crafted reply using full conversation context + Veda AI Lab knowledge"
+                    title="Generate an AI-crafted reply using full conversation context + Veda AI Lab LLC knowledge"
                     style={{
                       position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
                       display: "flex", alignItems: "center", gap: 5,
@@ -728,7 +728,7 @@ export default function Inbox() {
               <div style={{ marginTop: 6, fontSize: "0.7rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 14 }}>
                 <span><ChevronRight size={9} style={{ display: "inline" }} /> Enter to send · Shift+Enter for new line</span>
                 <span style={{ color: "rgba(167,139,250,0.5)", display: "flex", alignItems: "center", gap: 4 }}>
-                  <Sparkles size={9} /> AI uses full chat history + Veda AI Lab context
+                  <Sparkles size={9} /> AI uses full chat history + Veda AI Lab LLC context
                 </span>
               </div>
             </div>

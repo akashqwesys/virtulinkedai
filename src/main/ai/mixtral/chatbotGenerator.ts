@@ -6,7 +6,7 @@ import { caseStudies } from "./caseStudies";
 /**
  * Generate a chatbot reply for LinkedIn DMs.
  *
- * This uses the full narrative text of the Veda AI Lab Partnership Brochure 
+ * This uses the full narrative text of the Veda AI Lab LLC Partnership Brochure 
  * (injected by the client via VEDA_CONTEXT) to craft hyper-relevant responses.
  */
 export async function generateChatbotReply(
@@ -37,7 +37,7 @@ export async function generateChatbotReply(
       `OBJECTIVE: BUILD RAPPORT
 1. Start by warmly appreciating them for connecting (e.g., "Great to connect with you!", "Thanks for accepting my connection!").
 2. Write a crisp, conversational opening message to ${firstName} at ${company}.
-3. USE THE CONTEXT: Actively analyze their LEAD PROFILE and the CONVERSATION SO FAR. Use your Veda AI Lab knowledge invisibly as a framework to form a highly intelligent, tailored question about their specific industry/role.
+3. USE THE CONTEXT: Actively analyze their LEAD PROFILE and the CONVERSATION SO FAR. Use your Veda AI Lab LLC knowledge invisibly as a framework to form a highly intelligent, tailored question about their specific industry/role.
 4. DO NOT pitch your product or mention your solutions. DO NOT say "we solve this" or "our work with similar organizations". Your intent is purely networking and learning.
 5. Ask how their organization works, how they handle their specific role so effectively, or what kind of unique difficulties they face.
 6. CLOSING CTA: Explicitly express your desire to learn from them with a casual phrase similar to: "I'd love to hear your thoughts so we can exchange knowledge" or "It would be great to learn from your experience." Keep the total message under 3-4 sentences.`,
@@ -130,11 +130,11 @@ export async function generateChatbotReply(
     profile.education?.length ? `- Education: ${profile.education.map(e => `${e.degree} from ${e.school}`).join(', ')}` : null,
   ].filter(Boolean).join("\n");
 
-  const prompt = `You are ${context.yourName}, representing ${context.yourCompany || 'Veda AI Lab'}.
+  const prompt = `You are ${context.yourName}, representing ${context.yourCompany || 'Veda AI Lab LLC'}.
 
 === SENDER IDENTITY & CONTEXT ===
 - Name: ${context.yourName}
-- Company: ${context.yourCompany || 'Veda AI Lab'}
+- Company: ${context.yourCompany || 'Veda AI Lab LLC'}
 - Services: ${context.yourServices || 'White-label AI Agents, Chatbots, Workflow Automation, Self-Hosted LLMs, ERP Intelligence'}
 
 === LEAD PROFILE ===
@@ -147,7 +147,7 @@ ${previousInteractions}
 ${historyText}
 
 === FULL TASK INSTRUCTIONS ===
-The system has provided you with the COMPLETE narrative text of the "Veda AI Lab — Partnership Brochure 2026" above.
+The system has provided you with the COMPLETE narrative text of the "Veda AI Lab LLC — Partnership Brochure 2026" above.
 Your task is to write the next message in this conversation by meticulously analyzing the brochure text and extracting EXACT facts, metrics, and details.
 
 YOUR CURRENT OBJECTIVE:

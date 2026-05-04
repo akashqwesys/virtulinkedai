@@ -5,7 +5,7 @@ import { logActivity } from "../../storage/database";
 /**
  * Generate a comment for engagement on LinkedIn posts.
  *
- * This uses the full narrative text of the Veda AI Lab Partnership Brochure 
+ * This uses the full narrative text of the Veda AI Lab LLC Partnership Brochure 
  * (injected by the client via VEDA_CONTEXT) to craft practitioner-level comments.
  */
 export async function generatePostComment(
@@ -26,11 +26,11 @@ CONTENT: ${postContent.substring(0, 500)}
 
 === SENDER IDENTITY ===
 - Name: ${context.yourName}
-- Company: ${context.yourCompany || 'Veda AI Lab'}
+- Company: ${context.yourCompany || 'Veda AI Lab LLC'}
 - Expertise: ${context.yourExpertise || 'White-label AI R&D, Agentic Workflows, LLM Infrastructure'}
 
 === FULL TASK INSTRUCTIONS ===
-The system has provided you with the COMPLETE narrative text of the "Veda AI Lab — Partnership Brochure 2026" above.
+The system has provided you with the COMPLETE narrative text of the "Veda AI Lab LLC — Partnership Brochure 2026" above.
 Your task is to write a LinkedIn comment on the Target Post by analyzing the brochure text to extract your technical expertise.
 
 COMMENT STRATEGY & ALGORITHM:

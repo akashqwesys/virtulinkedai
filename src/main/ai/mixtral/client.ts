@@ -49,14 +49,14 @@ export async function generateWithOllama(
   let finalPrompt = prompt;
   if (!options.skipBrochureContext) {
     finalPrompt = [
-      `=== VEDA AI LAB — COMPLETE COMPANY KNOWLEDGE BASE ===`,
+      `=== Veda AI Lab LLC — COMPLETE COMPANY KNOWLEDGE BASE ===`,
       ``,
       VEDA_CONTEXT,
       ``,
       `=== END OF KNOWLEDGE BASE ===`,
       ``,
       `CRITICAL INSTRUCTIONS FOR THIS TASK:`,
-      `1. You represent Veda AI Lab. Your MAIN INTENTION is to build a genuine community, make connections, and offer mutual help—NOT just to sell.`,
+      `1. You represent Veda AI Lab LLC. Your MAIN INTENTION is to build a genuine community, make connections, and offer mutual help—NOT just to sell.`,
       `2. Balance the approach: Focus heavily on networking, contribution, and being in contact. Introduce product/service capabilities ONLY if the user shows explicit interest or if it naturally helps them.`,
       `3. ALL outreach and responses MUST align precisely with the knowledge base above, but use it to offer value and advice, not a hard pitch.`,
       `4. Match the professional, confident, peer-level tone — act as an advisor and community member, not a vendor.`,
