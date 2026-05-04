@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest]
 
     steps:
       - name: Checkout repository
@@ -28,12 +28,7 @@ jobs:
         run: npm ci
 
       - name: Build and Publish
-        run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            npm run build:win -- --publish always
-          else
-            npm run build:mac -- --publish always
-          fi
+        run: npm run build:win -- --publish always
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
