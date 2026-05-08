@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import {
   MessageSquare, RefreshCw, Send, Bot,
   Wifi, WifiOff, ChevronRight, CheckCheck,
-  Zap, Search, Calendar, Sparkles
+  Zap, Search, Calendar, Sparkles, LogOut,
+  GripHorizontal, Terminal
 } from "lucide-react";
 import Modal from "../components/Modal";
+import ActivityLogTerminal from "../components/ActivityLogTerminal";
 
 declare const window: any;
 const api = () => (window as any).api;
@@ -25,6 +27,8 @@ interface InboxLead {
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+  needsReply: boolean;
+  conversationFullyFetched: boolean;
   isLinkedInContact: boolean;
 }
 
@@ -107,9 +111,52 @@ export default function Inbox() {
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [manualHeight, setManualHeight] = useState(52);
+  const [isResizing, setIsResizing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auto-resize textarea when text grows
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Use manualHeight as the base
+    textarea.style.height = `${manualHeight}px`; 
+    
+    if (replyText) {
+      const scrollHeight = textarea.scrollHeight;
+      // Cap max height at 500px
+      const newHeight = Math.min(Math.max(scrollHeight, manualHeight, 52), 500);
+      textarea.style.height = `${newHeight}px`;
+    }
+  }, [replyText, selectedLead?.id, manualHeight]);
+
+  // Handle manual resizing from the top handle
+  useEffect(() => {
+    if (!isResizing) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (textareaRef.current) {
+        const rect = textareaRef.current.getBoundingClientRect();
+        // Since handle is at the TOP, dragging UP (smaller e.clientY) increases height
+        const newHeight = rect.bottom - e.clientY;
+        const clamped = Math.min(Math.max(newHeight, 52), 500);
+        setManualHeight(clamped);
+      }
+    };
+    const handleMouseUp = () => setIsResizing(false);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing]);
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
     setToast({ msg, type });
@@ -131,11 +178,13 @@ export default function Inbox() {
   };
 
   useEffect(() => {
+    // On mount: load whatever is already in the DB instantly (no browser launch)
     loadLeads();
     checkBrowserStatus();
-    // Poll leads refresh every 30s
+
+    // Poll DB for new leads/messages every 30s (no new scrape — just reads DB)
     const t = setInterval(() => { loadLeads(); checkBrowserStatus(); }, 30000);
-    // Listen for new messages pushed from main
+    // Listen for new messages pushed from main process
     const unsub = api().on.inboxNewMessage(() => loadLeads());
     return () => { clearInterval(t); unsub?.(); };
   }, []);
@@ -149,10 +198,12 @@ export default function Inbox() {
 
   const selectLead = async (lead: InboxLead) => {
     setSelectedLead(lead);
+    setReplyText("");
+    setManualHeight(52); // Reset to default size
     setMessages([]);
     setIsSyncing(true);
 
-    // First try to load cached messages from DB (instant)
+    // Just load cached messages from DB (instant)
     try {
       const cachedMsgs = await api().inbox.getMessages(lead.id);
       if (cachedMsgs && cachedMsgs.length > 0) {
@@ -160,24 +211,19 @@ export default function Inbox() {
       }
     } catch {}
 
-    // Then auto-sync from LinkedIn unconditionally
-    try {
-      const result = await api().inbox.syncThread(lead.id);
-      if (result?.success && result.messages?.length > 0) {
-        setMessages(result.messages);
-        setBrowserOpen(true);
-      }
-    } catch (err) {
-      console.error("Auto-sync failed on selectLead", err);
-    }
     setIsSyncing(false);
   };
 
   // Scrape ALL conversations from LinkedIn sidebar
   const scrapeAll = async () => {
+    if (isScraping) return; // UI-side guard
     setIsScraping(true);
     try {
       const result = await api().inbox.scrapeAll();
+      if (result?.busy) {
+        showToast('Sync already in progress — please wait...', 'err');
+        return;
+      }
       if (result?.success) {
         showToast(`Synced ${result.count} conversations from LinkedIn ✓`);
         setBrowserOpen(true);
@@ -201,7 +247,14 @@ export default function Inbox() {
         setMessages(result.messages || []);
         setBrowserOpen(true);
         showToast("Thread synced from LinkedIn");
-        loadLeads();
+        // Reload leads so the sidebar preview and time update immediately
+        const freshLeads = await api().inbox.getLeads().catch(() => null);
+        if (freshLeads) {
+          setLeads(freshLeads);
+          // Also refresh selectedLead so header/time display shows updated data
+          const refreshed = freshLeads.find((l: any) => l.id === selectedLead.id);
+          if (refreshed) setSelectedLead(refreshed);
+        }
       } else {
         showToast(result?.error || "Sync failed", "err");
       }
@@ -212,12 +265,14 @@ export default function Inbox() {
     }
   };
 
+
   const sendMessage = async () => {
     if (!selectedLead || !replyText.trim()) return;
     const text = replyText.trim();
     setReplyText("");
+    setManualHeight(52); // Revert size after send
     setIsSending(true);
-    // Optimistic update
+    // Optimistic update — show the message immediately while LinkedIn processes it
     const optimistic: ConversationMsg = {
       id: `opt-${Date.now()}`, leadId: selectedLead.id,
       direction: "outbound", content: text, platform: "linkedin",
@@ -226,20 +281,24 @@ export default function Inbox() {
     setMessages(prev => [...prev, optimistic]);
     try {
       const threadId = selectedLead.threadUrl || selectedLead.linkedinUrl;
+      // The backend sends AND then waits 4-5 s before scraping the full thread.
+      // It returns { success, messages } in a single response — no separate syncThread needed.
       const result = await api().inbox.sendManual({ leadId: selectedLead.id, threadId, message: text });
       if (result?.success) {
         showToast("Message sent on LinkedIn ✓");
         setBrowserOpen(true);
-        loadLeads();
-        
-        // Auto-sync to fetch the delivered message
-        try {
-          const syncRes = await api().inbox.syncThread(selectedLead.id);
-          if (syncRes?.success && syncRes.messages) {
-            setMessages(syncRes.messages);
-          }
-        } catch (e) {
-          console.error("Failed to sync after sending message", e);
+
+        // Replace optimistic message with the fully-scraped thread returned by the backend
+        if (result.messages && result.messages.length > 0) {
+          setMessages(result.messages);
+        }
+
+        // Refresh leads sidebar so preview/time reflects the new message
+        const freshLeads = await api().inbox.getLeads().catch(() => null);
+        if (freshLeads) {
+          setLeads(freshLeads);
+          const refreshed = freshLeads.find((l: any) => l.id === selectedLead.id);
+          if (refreshed) setSelectedLead(refreshed);
         }
       } else {
         showToast(result?.error || "Send failed", "err");
@@ -254,6 +313,7 @@ export default function Inbox() {
       setIsSending(false);
     }
   };
+
 
   const sendWelcome = async () => {
     if (!selectedLead) return;
@@ -307,7 +367,10 @@ export default function Inbox() {
     if (!selectedLead || isGeneratingAi) return;
     setIsGeneratingAi(true);
     try {
-      const result = await api().inbox.generateAiReply({ leadId: selectedLead.id });
+      const result = await api().inbox.generateAiReply({ 
+        leadId: selectedLead.id,
+        referenceText: replyText.trim()
+      });
       if (result?.success && result.reply) {
         setReplyText(result.reply);
         showToast("AI draft ready — review and send when you're happy ✨");
@@ -321,14 +384,57 @@ export default function Inbox() {
     }
   };
 
+  const handleLogout = async () => {
+    if (!confirm("Are you sure you want to log out from LinkedIn? This will clear the inbox browser session and remove all synced conversations from this account.")) return;
+    setIsLoggingOut(true);
+    try {
+      const result = await api().inbox.logout();
+      if (result.success) {
+        // Immediately clear the UI — old account's chats are gone from the DB
+        setLeads([]);
+        setSelectedLead(null);
+        setMessages([]);
+        setBrowserOpen(false);
+        showToast("Logged out — inbox cleared. Log into the new account and Sync All ✓");
+      } else {
+        showToast(result?.error || "Logout failed", "err");
+      }
+    } catch (e: any) {
+      showToast(e?.message || "Logout failed", "err");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+  
+  const handleLaunchBrowser = async () => {
+    setIsLaunching(true);
+    try {
+      const res = await api().inbox.launchBrowser();
+      if (res.success) {
+        setBrowserOpen(true);
+        showToast("Inbox browser launched ✓");
+      } else {
+        showToast(res.error || "Failed to launch browser", "err");
+      }
+    } catch (e: any) {
+      showToast(e.message || "Launch failed", "err");
+    } finally {
+      setIsLaunching(false);
+    }
+  };
+
+  // Preserve the server-sorted order (sidebar_position ASC = LinkedIn's newest-first order).
+  // Only filter by search query — do NOT re-sort here, the backend already provides the correct order.
   const filteredLeads = leads.filter(l => {
-    const name = `${l.firstName} ${l.lastName}`.toLowerCase();
-    return name.includes(search.toLowerCase()) || l.company?.toLowerCase().includes(search.toLowerCase());
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    const name = (l.fullName || `${l.firstName} ${l.lastName}`).toLowerCase();
+    return name.includes(q) || l.company?.toLowerCase().includes(q) || l.headline?.toLowerCase().includes(q);
   });
 
   const statusColor: Record<string, string> = {
-    in_conversation: "#22c55e", handed_off: "#f59e0b", meeting_booked: "#8b5cf6",
-    welcome_sent: "#3b82f6", connected: "#6b7280",
+    in_conversation: "var(--accent-success)", handed_off: "var(--accent-warning)", meeting_booked: "var(--accent-primary)",
+    welcome_sent: "var(--accent-primary)", connected: "#6b7280",
   };
 
   return (
@@ -337,10 +443,10 @@ export default function Inbox() {
       {toast && (
         <div style={{
           position: "fixed", top: 20, right: 24, zIndex: 9999,
-          padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: "0.875rem",
-          background: toast.type === "ok" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
-          border: `1px solid ${toast.type === "ok" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
-          color: toast.type === "ok" ? "#86efac" : "#fca5a5",
+          padding: "12px 20px", borderRadius: "var(--radius-lg)", fontWeight: 600, fontSize: "0.875rem",
+          background: toast.type === "ok" ? "rgba(52, 199, 89, 0.1)" : "rgba(255, 59, 48, 0.1)",
+          border: `1px solid ${toast.type === "ok" ? "rgba(52, 199, 89, 0.1)" : "rgba(255, 59, 48, 0.1)"}`,
+          color: toast.type === "ok" ? "var(--accent-success)" : "#fca5a5",
           backdropFilter: "blur(12px)", boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
           animation: "fadeIn 0.2s ease",
         }}>{toast.msg}</div>
@@ -360,7 +466,7 @@ export default function Inbox() {
           <div style={{ display: "grid", gap: 10 }}>
             {slots.map((slot, i) => (
               <button key={i} className="btn" onClick={() => scheduleMeeting(slot)} disabled={isScheduling}
-                style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 10, padding: "12px 16px", textAlign: "left", cursor: "pointer", color: "var(--text-primary)" }}>
+                style={{ background: "var(--accent-primary-glow)", border: "1px solid var(--accent-primary-glow)", borderRadius: "var(--radius-lg)", padding: "12px 16px", textAlign: "left", cursor: "pointer", color: "var(--text-primary)" }}>
                 <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>
                   {new Date(slot.start).toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" })}
                 </div>
@@ -383,22 +489,54 @@ export default function Inbox() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{
               display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
-              borderRadius: 12, fontSize: "0.7rem", fontWeight: 500,
-              background: browserOpen ? "rgba(34,197,94,0.05)" : "var(--bg-tertiary)",
-              border: `1px solid ${browserOpen ? "rgba(34,197,94,0.15)" : "var(--border-subtle)"}`,
+              borderRadius: "var(--radius-lg)", fontSize: "0.7rem", fontWeight: 500,
+              background: browserOpen ? "rgba(52, 199, 89, 0.1)" : "var(--bg-tertiary)",
+              border: `1px solid ${browserOpen ? "rgba(52, 199, 89, 0.1)" : "var(--border-subtle)"}`,
               color: browserOpen ? "var(--accent-success)" : "var(--text-muted)",
             }}>
               {browserOpen ? <Wifi size={13} /> : <WifiOff size={13} />}
               {browserOpen ? "Inbox Browser Open" : "Inbox Browser Idle"}
             </div>
+            <button 
+              onClick={handleLaunchBrowser} 
+              disabled={isLaunching || browserOpen}
+              style={{ 
+                cursor: (isLaunching || browserOpen) ? "default" : "pointer", 
+                fontSize: "0.75rem", padding: "4px 12px", 
+                display: "flex", alignItems: "center", gap: 6, 
+                background: browserOpen ? "rgba(52, 199, 89, 0.1)" : "var(--bg-tertiary)", 
+                border: `1px solid ${browserOpen ? "rgba(52, 199, 89, 0.1)" : "var(--border-subtle)"}`, 
+                color: browserOpen ? "var(--accent-success)" : "var(--text-primary)", 
+                borderRadius: "6px", outline: "none",
+                opacity: browserOpen ? 0.7 : 1
+              }}
+              title={browserOpen ? "Inbox browser is already running" : "Launch dedicated inbox browser window"}
+            >
+              <Zap size={12} style={{ animation: isLaunching ? "pulse 1s ease infinite" : "none" }} />
+              {isLaunching ? "Launching..." : browserOpen ? "Browser Active" : "Launch Browser"}
+            </button>
             <button onClick={scrapeAll} disabled={isScraping}
               style={{ cursor: "pointer", fontSize: "0.75rem", padding: "4px 12px", display: "flex", alignItems: "center", gap: 6, background: "var(--accent-primary-glow)", border: "1px solid var(--border-primary)", color: "var(--text-primary)", borderRadius: "6px", outline: "none" }}
               title="Open LinkedIn messaging in a separate browser window and sync ALL conversations to inbox">
               <RefreshCw size={12} style={{ animation: isScraping ? "spin 1s linear infinite" : "none" }} />
               {isScraping ? "Syncing…" : "Sync All"}
             </button>
-            <button style={{ cursor: "pointer", fontSize: "0.75rem", padding: "4px 12px", background: "var(--bg-tertiary)", border: "1px solid var(--border-subtle)", borderRadius: "6px", color: "var(--text-primary)", outline: "none", display: "flex", alignItems: "center", gap: 6 }} onClick={loadLeads}>
-              <RefreshCw size={12} /> Refresh
+            <button 
+              onClick={handleLogout} 
+              disabled={isLoggingOut}
+              style={{ cursor: "pointer", fontSize: "0.75rem", padding: "4px 12px", background: "rgba(255, 59, 48, 0.1)", border: "1px solid rgba(255, 59, 48, 0.1)", borderRadius: "6px", color: "var(--accent-danger)", outline: "none", display: "flex", alignItems: "center", gap: 6 }}
+              title="Log out from LinkedIn and clear browser session"
+            >
+              {isLoggingOut ? <RefreshCw size={12} style={{ animation: "spin 1s linear infinite" }} /> : <LogOut size={12} />}
+              {isLoggingOut ? "Logging out..." : "Logout"}
+            </button>
+            <button 
+              onClick={() => setShowTerminal(!showTerminal)} 
+              style={{ cursor: "pointer", fontSize: "0.75rem", padding: "4px 12px", background: showTerminal ? "var(--accent-primary)" : "var(--bg-tertiary)", border: `1px solid ${showTerminal ? "var(--accent-primary)" : "var(--border-subtle)"}`, borderRadius: "6px", color: showTerminal ? "#fff" : "var(--text-primary)", outline: "none", display: "flex", alignItems: "center", gap: 6 }}
+              title="Toggle Inbox Logs Terminal"
+            >
+              <Terminal size={12} />
+              Logs
             </button>
           </div>
       </div>
@@ -454,7 +592,7 @@ export default function Inbox() {
                       position: "absolute", bottom: 0, right: 0,
                       width: 10, height: 10, borderRadius: "50%",
                       background: statusColor[lead.status] || "#6b7280",
-                      border: "2px solid var(--bg-secondary)",
+                      border: "1px solid var(--bg-secondary)",
                     }} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -463,10 +601,16 @@ export default function Inbox() {
                         {lead.fullName || `${lead.firstName} ${lead.lastName}`.trim() || 'Unknown'}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {lead.needsReply && (
+                          <span style={{
+                            background: "rgba(255, 149, 0, 0.1)", color: "var(--accent-warning)", border: "1px solid rgba(255, 149, 0, 0.1)",
+                            borderRadius: "var(--radius-lg)", padding: "0 6px", fontSize: "0.6rem", fontWeight: 700, display: "flex", alignItems: "center", height: 16
+                          }}>Reply?</span>
+                        )}
                         {lead.unreadCount > 0 && (
                           <span style={{
                             background: "var(--accent-primary)", color: "#fff",
-                            borderRadius: 10, padding: "0 6px", fontSize: "0.65rem", fontWeight: 700,
+                            borderRadius: "var(--radius-lg)", padding: "0 6px", fontSize: "0.65rem", fontWeight: 700, display: "flex", alignItems: "center", height: 16
                           }}>{lead.unreadCount}</span>
                         )}
                         <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
@@ -497,9 +641,9 @@ export default function Inbox() {
             <p style={{ fontSize: "0.8125rem", opacity: 0.7 }}>Click any lead on the left to load their messages</p>
             {!browserOpen && (
               <div style={{
-                marginTop: 8, padding: "12px 20px", borderRadius: 12,
-                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
-                fontSize: "0.8125rem", color: "#fcd34d", maxWidth: 380, textAlign: "center",
+                marginTop: 8, padding: "12px 20px", borderRadius: "var(--radius-lg)",
+                background: "rgba(255, 149, 0, 0.1)", border: "1px solid rgba(255, 149, 0, 0.1)",
+                fontSize: "0.8125rem", color: "var(--accent-warning)", maxWidth: 380, textAlign: "center",
               }}>
                 <Zap size={14} style={{ display: "inline", marginRight: 6 }} />
                 Clicking a lead will open a <strong>dedicated inbox browser window</strong> for messaging — your campaign browser stays untouched.
@@ -532,12 +676,12 @@ export default function Inbox() {
                   <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                     {selectedLead.company || selectedLead.headline || ""}
                     {selectedLead.chatbotState === "handed_off" && (
-                      <span style={{ marginLeft: 8, padding: "1px 8px", background: "rgba(245,158,11,0.15)", borderRadius: 10, color: "#fcd34d", fontSize: "0.7rem" }}>
+                      <span style={{ marginLeft: 8, padding: "1px 8px", background: "rgba(255, 149, 0, 0.1)", borderRadius: "var(--radius-lg)", color: "var(--accent-warning)", fontSize: "0.7rem" }}>
                         Manual mode
                       </span>
                     )}
                     {selectedLead.chatbotState === "waiting_reply" && (
-                      <span style={{ marginLeft: 8, padding: "1px 8px", background: "rgba(99,102,241,0.15)", borderRadius: 10, color: "#a5b4fc", fontSize: "0.7rem" }}>
+                      <span style={{ marginLeft: 8, padding: "1px 8px", background: "var(--accent-primary-glow)", borderRadius: "var(--radius-lg)", color: "var(--text-accent)", fontSize: "0.7rem" }}>
                         <Bot size={10} style={{ display: "inline", marginRight: 3 }} />AI active
                       </span>
                     )}
@@ -621,7 +765,7 @@ export default function Inbox() {
                     }}>
                       {msg.isAutomated && <Bot size={8} />}
                       {formatMessageTime(msg.sentAt)}
-                      {msg.direction === "outbound" && <CheckCheck size={8} style={{ color: "#93c5fd" }} />}
+                      {msg.direction === "outbound" && <CheckCheck size={8} style={{ color: "var(--text-accent)" }} />}
                     </div>
                   </div>
                 </div>
@@ -649,7 +793,25 @@ export default function Inbox() {
               <div style={{ position: "relative", display: "flex", gap: 8, alignItems: "flex-end" }}>
                 {/* Textarea wrapper — has the AI button inside the right edge */}
                 <div style={{ flex: 1, position: "relative" }}>
+                  {/* Manual Resize Handle at Top Right */}
+                  <div 
+                    onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+                    title="Drag to resize textbox"
+                    style={{
+                      position: "absolute", top: -8, right: 10, zIndex: 20,
+                      cursor: "ns-resize", padding: "4px", opacity: 0.4,
+                      color: "var(--text-muted)", background: "var(--bg-glass)",
+                      borderRadius: "4px", border: "1px solid var(--border-subtle)",
+                      display: "flex", alignItems: "center", justifyContent: "center"
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+                    onMouseLeave={e => e.currentTarget.style.opacity = "0.4"}
+                  >
+                    <GripHorizontal size={12} />
+                  </div>
+
                   <textarea
+                    ref={textareaRef}
                     placeholder="Type a message… (sends via LinkedIn, stops AI chatbot)"
                     value={replyText}
                     onChange={e => setReplyText(e.target.value)}
@@ -677,20 +839,20 @@ export default function Inbox() {
                     style={{
                       position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
                       display: "flex", alignItems: "center", gap: 5,
-                      padding: "5px 10px", borderRadius: 20,
+                      padding: "5px 10px", borderRadius: "var(--radius-lg)",
                       background: isGeneratingAi
-                        ? "rgba(139,92,246,0.08)"
-                        : "linear-gradient(135deg, rgba(139,92,246,0.18) 0%, rgba(99,102,241,0.18) 100%)",
-                      border: "1px solid rgba(139,92,246,0.35)",
-                      color: isGeneratingAi ? "rgba(167,139,250,0.6)" : "#a78bfa",
+                        ? "var(--accent-primary-glow)"
+                        : "linear-gradient(135deg, var(--accent-primary-glow) 0%, var(--accent-primary-glow) 100%)",
+                      border: "1px solid var(--accent-primary-glow)",
+                      color: isGeneratingAi ? "var(--text-accent)" : "var(--text-accent)",
                       fontSize: "0.7rem", fontWeight: 600, cursor: isGeneratingAi ? "not-allowed" : "pointer",
                       outline: "none", whiteSpace: "nowrap",
                       transition: "all 0.2s ease",
                       backdropFilter: "blur(8px)",
-                      boxShadow: isGeneratingAi ? "none" : "0 2px 12px rgba(139,92,246,0.2)",
+                      boxShadow: isGeneratingAi ? "none" : "0 2px 12px var(--accent-primary-glow)",
                     }}
-                    onMouseEnter={e => { if (!isGeneratingAi) (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, rgba(139,92,246,0.28) 0%, rgba(99,102,241,0.28) 100%)"; }}
-                    onMouseLeave={e => { if (!isGeneratingAi) (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, rgba(139,92,246,0.18) 0%, rgba(99,102,241,0.18) 100%)"; }}
+                    onMouseEnter={e => { if (!isGeneratingAi) (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, var(--accent-primary-glow) 0%, var(--accent-primary-glow) 100%)"; }}
+                    onMouseLeave={e => { if (!isGeneratingAi) (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, var(--accent-primary-glow) 0%, var(--accent-primary-glow) 100%)"; }}
                   >
                     <Sparkles
                       size={12}
@@ -727,14 +889,45 @@ export default function Inbox() {
 
               <div style={{ marginTop: 6, fontSize: "0.7rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 14 }}>
                 <span><ChevronRight size={9} style={{ display: "inline" }} /> Enter to send · Shift+Enter for new line</span>
-                <span style={{ color: "rgba(167,139,250,0.5)", display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ color: "var(--text-accent)", display: "flex", alignItems: "center", gap: 4 }}>
                   <Sparkles size={9} /> AI uses full chat history + Veda AI Lab LLC context
                 </span>
               </div>
             </div>
           </div>
         )}
+
+        {/* LOG TERMINAL SIDEBAR */}
+        {showTerminal && (
+          <div style={{
+            width: 360, flexShrink: 0,
+            borderLeft: "1px solid var(--border-subtle)",
+            background: "var(--bg-card)",
+            display: "flex", flexDirection: "column",
+            zIndex: 10
+          }}>
+            <ActivityLogTerminal 
+              moduleFilter="inbox, ai, calendar, network" 
+              title="Inbox Operations Log"
+              height="100%"
+              onClose={() => setShowTerminal(false)}
+              className="border-none rounded-none"
+            />
+          </div>
+        )}
       </div>
     </>
   );
+}
+
+const styles = `
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+`;
+
+if (typeof document !== "undefined") {
+  const styleEl = document.createElement("style");
+  styleEl.innerHTML = styles;
+  document.head.appendChild(styleEl);
 }

@@ -17,16 +17,17 @@ interface ActivityEntry {
 export default function Analytics() {
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [filter, setFilter] = useState<string>("all");
+  const [limit, setLimit] = useState<number>(200);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadActivities();
-  }, [filter]);
+  }, [filter, limit]);
 
   async function loadActivities() {
     setLoading(true);
     try {
-      const params: any = { limit: 200 };
+      const params: any = { limit };
       if (filter !== "all") params.module = filter;
       const data = await (window as any).api.activity.list(params);
       setActivities(data || []);
@@ -115,9 +116,22 @@ export default function Analytics() {
             Activity insights and performance metrics
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={loadActivities}>
-          <RefreshCw size={14} className="mr-1"/> Refresh
-        </button>
+        <div className="flex gap-2">
+          <select 
+            className="btn btn-secondary" 
+            style={{ padding: '0 12px', fontSize: '0.8125rem' }}
+            value={limit}
+            onChange={(e) => setLimit(Number(e.target.value))}
+          >
+            <option value={200}>Last 200</option>
+            <option value={500}>Last 500</option>
+            <option value={1000}>Last 1000</option>
+            <option value={5000}>Last 5000</option>
+          </select>
+          <button className="btn btn-secondary" onClick={loadActivities}>
+            <RefreshCw size={14} className="mr-1"/> Refresh
+          </button>
+        </div>
       </div>
 
       <div className="page-body">
@@ -127,8 +141,8 @@ export default function Analytics() {
             <div
               className="stat-icon"
               style={{
-                background: "rgba(99, 102, 241, 0.15)",
-                color: "#6366f1",
+                background: "var(--accent-primary-glow)",
+                color: "var(--accent-primary)",
                 display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >
@@ -150,8 +164,8 @@ export default function Analytics() {
             <div
               className="stat-icon"
               style={{
-                background: "rgba(16, 185, 129, 0.15)",
-                color: "#10b981",
+                background: "rgba(52, 199, 89, 0.1)",
+                color: "var(--accent-success)",
                 display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >
@@ -178,8 +192,8 @@ export default function Analytics() {
             <div
               className="stat-icon"
               style={{
-                background: "rgba(239, 68, 68, 0.15)",
-                color: "#ef4444",
+                background: "rgba(255, 59, 48, 0.1)",
+                color: "var(--accent-danger)",
                 display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >
@@ -201,8 +215,8 @@ export default function Analytics() {
             <div
               className="stat-icon"
               style={{
-                background: "rgba(59, 130, 246, 0.15)",
-                color: "#3b82f6",
+                background: "rgba(0, 122, 255, 0.1)",
+                color: "var(--accent-primary)",
                 display: "flex", alignItems: "center", justifyContent: "center"
               }}
             >

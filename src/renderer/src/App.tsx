@@ -6,7 +6,7 @@ import Settings from "./pages/Settings";
 import ContentCalendar from "./pages/ContentCalendar";
 import Inbox from "./pages/Inbox";
 import Analytics from "./pages/Analytics";
-import EmailTemplates from "./pages/EmailTemplates";
+import InMail from "./pages/InMail";
 import {
   LayoutDashboard,
   Rocket,
@@ -26,8 +26,8 @@ type PageKey =
   | "leads"
   | "content"
   | "inbox"
+  | "inmail"
   | "analytics"
-  | "templates"
   | "settings";
 
 interface NavItem {
@@ -42,9 +42,9 @@ const navItems: NavItem[] = [
   { key: "campaigns", label: "Campaigns", icon: <Rocket size={18} />, section: "Automation" },
   { key: "leads", label: "Lead Pipeline", icon: <Users size={18} /> },
   { key: "inbox", label: "Inbox", icon: <MessageSquare size={18} /> },
+  { key: "inmail", label: "Direct InMail", icon: <Mail size={18} /> },
   { key: "content", label: "Content Calendar", icon: <Calendar size={18} />, section: "Content" },
   { key: "analytics", label: "Analytics", icon: <LineChart size={18} /> },
-  { key: "templates", label: "Email Templates", icon: <Mail size={18} />, section: "Tools" },
   { key: "settings", label: "Settings", icon: <SettingsIcon size={18} />, section: "System" },
 ];
 
@@ -108,10 +108,10 @@ export default function App() {
         return <ContentCalendar />;
       case "inbox":
         return <Inbox />;
+      case "inmail":
+        return <InMail />;
       case "analytics":
         return <Analytics />;
-      case "templates":
-        return <EmailTemplates />;
       case "settings":
         return <Settings />;
       default:

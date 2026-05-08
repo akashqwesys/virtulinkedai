@@ -25,7 +25,6 @@ export const JOB_TYPES = {
   SEND_WELCOME_EMAIL: "SEND_WELCOME_EMAIL",
   SEND_FOLLOWUP_EMAIL: "SEND_FOLLOWUP_EMAIL",
   SEND_MEETING_CONFIRMATION: "SEND_MEETING_CONFIRMATION",
-  ENRICH_LEAD_EMAIL: "ENRICH_LEAD_EMAIL",
 
   // Content & Posting
   PUBLISH_SCHEDULED_POST: "PUBLISH_SCHEDULED_POST",
@@ -105,11 +104,6 @@ export interface SendFollowupEmailPayload {
   leadId: string;
   campaignId: string;
   recipientEmail: string;
-}
-
-export interface EnrichLeadEmailPayload {
-  leadId: string;
-  campaignId: string;
 }
 
 export interface SendMeetingConfirmationPayload {

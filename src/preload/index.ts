@@ -103,12 +103,6 @@ contextBridge.exposeInMainWorld("api", {
     sendInMail: createIpcInvoke(IPC_CHANNELS.SALES_NAV_INMAIL),
   },
 
-  // Email Templates
-  emailTemplates: {
-    list: createIpcInvoke(IPC_CHANNELS.EMAIL_TEMPLATES_LIST),
-    save: createIpcInvoke(IPC_CHANNELS.EMAIL_TEMPLATES_SAVE),
-    delete: createIpcInvoke(IPC_CHANNELS.EMAIL_TEMPLATES_DELETE),
-  },
 
   // Connection Checker
   connectionChecker: {
@@ -162,5 +156,15 @@ contextBridge.exposeInMainWorld("api", {
     pollUnread: createIpcInvoke(IPC_CHANNELS.INBOX_POLL_UNREAD),
     scrapeAll: createIpcInvoke('inbox:scrape-all'),
     generateAiReply: createIpcInvoke(IPC_CHANNELS.INBOX_AI_REPLY),
+    logout: createIpcInvoke('inbox:logout'),
+    launchBrowser: createIpcInvoke(IPC_CHANNELS.INBOX_BROWSER_LAUNCH),
+  },
+
+  // InMail
+  inmail: {
+    processDirect: createIpcInvoke(IPC_CHANNELS.INMAIL_PROCESS_DIRECT),
+    list: createIpcInvoke(IPC_CHANNELS.INMAIL_LIST),
+    getForProfile: createIpcInvoke(IPC_CHANNELS.INMAIL_GET_FOR_PROFILE),
+    onLog: createIpcOn("inmail:log"),
   },
 });

@@ -23,6 +23,73 @@ export function getDatabase(): any {
   return db;
 }
 
+/**
+ * Wipe only inbox-related data when the user logs out from the inbox browser.
+ * This clears:
+ *   1. All rows in inbox_contacts (these are per-account LinkedIn conversations)
+ *   2. All conversations rows linked to inbox-only stub leads
+ *   3. Stub lead rows that were auto-created solely to satisfy the FK for inbox contacts
+ *      (identified by linkedin_url starting with "inbox-contact-" or "inbox-")
+ *
+ * Campaign leads, emails, job_queue, and all other data are untouched.
+ */
+export function wipeInboxData(): void {
+  const db = getDatabase();
+
+  db.transaction(() => {
+    // 1. Get current logged in account
+    const currentSession = db.prepare('SELECT account_linkedin_url FROM inbox_sessions WHERE id = ?').get('current');
+    const currentAccountId = currentSession?.account_linkedin_url || '';
+
+    // Step 1: Collect IDs of stub leads created purely for the inbox for THIS account
+    const stubLeadIds: string[] = (
+      db.prepare(
+        `SELECT id FROM leads WHERE (linkedin_url LIKE 'inbox-contact-%' OR linkedin_url LIKE 'inbox-%') AND id IN (SELECT lead_id FROM inbox_contacts WHERE linkedin_account_id = ?)`
+      ).all(currentAccountId) as any[]
+    ).map((r: any) => r.id);
+
+    // Step 2: Also collect lead_ids referenced by inbox_contacts for THIS account
+    const inboxLinkedLeadIds: string[] = (
+      db.prepare(
+        `SELECT DISTINCT lead_id FROM inbox_contacts WHERE lead_id IS NOT NULL AND linkedin_account_id = ?`
+      ).all(currentAccountId) as any[]
+    ).map((r: any) => r.lead_id);
+
+    // Merge — only wipe leads that are *also* stub leads (don't touch real campaign leads)
+    const stubSet = new Set(stubLeadIds);
+    const leadsToWipe = [...new Set([...stubLeadIds, ...inboxLinkedLeadIds.filter(id => stubSet.has(id))])];
+
+    // Step 3: Delete conversations for stub leads
+    if (leadsToWipe.length > 0) {
+      const placeholders = leadsToWipe.map(() => '?').join(',');
+      db.prepare(`DELETE FROM conversations WHERE lead_id IN (${placeholders})`).run(...leadsToWipe);
+      db.prepare(`DELETE FROM leads WHERE id IN (${placeholders})`).run(...leadsToWipe);
+    }
+    
+    // Also delete any other conversations bound to this account
+    if (currentAccountId) {
+        db.prepare('DELETE FROM conversations WHERE linkedin_account_id = ?').run(currentAccountId);
+    }
+
+    // Step 4: Clear all inbox_contacts for this account
+    if (currentAccountId) {
+        db.prepare('DELETE FROM inbox_contacts WHERE linkedin_account_id = ?').run(currentAccountId);
+    } else {
+        db.prepare('DELETE FROM inbox_contacts').run(); // Fallback
+    }
+    
+    // Step 5: Clear the session
+    db.prepare('DELETE FROM inbox_sessions WHERE id = ?').run('current');
+  })();
+
+  logActivity('inbox_data_wiped', 'inbox', {
+    reason: 'account_logout',
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log('[DB] Inbox data wiped for current account.');
+}
+
 export function wipeDatabase(): void {
   const db = getDatabase();
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
@@ -117,6 +184,7 @@ function initializeSchema(db: any): void {
       sql: `CREATE TABLE IF NOT EXISTS conversations (
         id TEXT PRIMARY KEY,
         lead_id TEXT NOT NULL,
+        linkedin_account_id TEXT DEFAULT '',
         direction TEXT NOT NULL,
         content TEXT NOT NULL,
         platform TEXT DEFAULT 'linkedin',
@@ -166,19 +234,6 @@ function initializeSchema(db: any): void {
       )`,
     },
     {
-      name: "email_templates",
-      sql: `CREATE TABLE IF NOT EXISTS email_templates (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        subject TEXT NOT NULL,
-        body TEXT NOT NULL,
-        variables_json TEXT DEFAULT '[]',
-        type TEXT DEFAULT 'intro',
-        created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-        updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-      )`,
-    },
-    {
       name: "connection_checks",
       sql: `CREATE TABLE IF NOT EXISTS connection_checks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,15 +273,51 @@ function initializeSchema(db: any): void {
       name: "inbox_contacts",
       sql: `CREATE TABLE IF NOT EXISTS inbox_contacts (
         id TEXT PRIMARY KEY,
+        linkedin_account_id TEXT DEFAULT '',
         name TEXT NOT NULL DEFAULT '',
         headline TEXT DEFAULT '',
         avatar_url TEXT DEFAULT '',
         thread_url TEXT NOT NULL,
+        conversation_id TEXT DEFAULT '',
         last_message TEXT DEFAULT '',
         last_message_at TEXT DEFAULT '',
         unread_count INTEGER DEFAULT 0,
         lead_id TEXT DEFAULT NULL,
+        sidebar_position INTEGER DEFAULT 9999,
+        conversation_fully_fetched INTEGER DEFAULT 0,
+        last_synced_at TEXT DEFAULT '',
+        needs_reply INTEGER DEFAULT 0,
+        has_new_messages INTEGER DEFAULT 1,
         synced_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      )`,
+    },
+    {
+      name: "inbox_sessions",
+      sql: `CREATE TABLE IF NOT EXISTS inbox_sessions (
+        id TEXT PRIMARY KEY DEFAULT 'current',
+        account_name TEXT NOT NULL DEFAULT '',
+        account_linkedin_url TEXT NOT NULL DEFAULT '',
+        account_profile_image TEXT DEFAULT '',
+        logged_in_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        is_active INTEGER DEFAULT 1,
+        last_sync_all_at TEXT DEFAULT ''
+      )`,
+    },
+    {
+      name: "inmails",
+      sql: `CREATE TABLE IF NOT EXISTS inmails (
+        id TEXT PRIMARY KEY,
+        profile_url TEXT NOT NULL,
+        first_name TEXT DEFAULT '',
+        last_name TEXT DEFAULT '',
+        headline TEXT DEFAULT '',
+        company TEXT DEFAULT '',
+        profile_image_url TEXT DEFAULT '',
+        subject TEXT DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        type TEXT DEFAULT 'inmail',
+        objective TEXT DEFAULT '',
+        sent_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       )`,
     },
   ];
@@ -243,7 +334,18 @@ function initializeSchema(db: any): void {
   ensureColumnExists(db, "leads", "interaction_count", "INTEGER DEFAULT 0");
   ensureColumnExists(db, "leads", "chatbot_state", "TEXT DEFAULT 'idle'");
   ensureColumnExists(db, "leads", "thread_url", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "inbox_contacts", "sidebar_position", "INTEGER DEFAULT 9999");
+  ensureColumnExists(db, "inbox_contacts", "linkedin_account_id", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "inbox_contacts", "conversation_id", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "inbox_contacts", "conversation_fully_fetched", "INTEGER DEFAULT 0");
+  ensureColumnExists(db, "inbox_contacts", "last_synced_at", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "inbox_contacts", "needs_reply", "INTEGER DEFAULT 0");
+  ensureColumnExists(db, "inbox_sessions", "last_sync_all_at", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "conversations", "linkedin_account_id", "TEXT DEFAULT ''");
+
   ensureColumnExists(db, "campaigns", "status", "TEXT DEFAULT 'draft'");
+  ensureColumnExists(db, "inmails", "profile_image_url", "TEXT DEFAULT ''");
+  ensureColumnExists(db, "inmails", "objective", "TEXT DEFAULT ''");
   ensureColumnExists(db, "scheduled_posts", "status", "TEXT DEFAULT 'draft'");
   ensureColumnExists(
     db,
@@ -267,6 +369,8 @@ function initializeSchema(db: any): void {
     "CREATE INDEX IF NOT EXISTS idx_job_queue_status ON job_queue(status, run_at)",
     "CREATE INDEX IF NOT EXISTS idx_job_queue_type ON job_queue(type, status)",
     "CREATE INDEX IF NOT EXISTS idx_inbox_contacts_thread ON inbox_contacts(thread_url)",
+    "CREATE INDEX IF NOT EXISTS idx_inmails_profile ON inmails(profile_url)",
+    "CREATE INDEX IF NOT EXISTS idx_inmails_sent_at ON inmails(sent_at)",
   ];
 
   for (const idx of indexes) {
@@ -325,7 +429,6 @@ function initializeSchema(db: any): void {
         "conversations",
         "scheduled_posts",
         "job_queue",
-        "email_templates",
       ];
 
       for (const table of tablesToUpdate) {
@@ -346,8 +449,6 @@ function initializeSchema(db: any): void {
           columns = ["created_at", "scheduled_at", "published_at"];
         else if (table === "job_queue")
           columns = ["created_at", "run_at", "started_at", "completed_at"];
-        else if (table === "email_templates")
-          columns = ["created_at", "updated_at"];
 
         for (const col of columns) {
           try {
@@ -369,12 +470,51 @@ function initializeSchema(db: any): void {
       );
       logActivity("migration_applied", "storage", { key: migrationKeyV2 });
     }
+
+    // 6. Inbox Contacts Delta Sync Migration (v3)
+    const migrationKeyV3 = "inbox_delta_sync_v3";
+    const migrationDoneV3 = db
+      .prepare("SELECT key FROM migration_meta WHERE key = ?")
+      .get(migrationKeyV3);
+      
+    if (!migrationDoneV3) {
+      console.log("Applying Inbox Delta Sync Migration (v3)...");
+      try {
+        db.exec("ALTER TABLE inbox_contacts ADD COLUMN has_new_messages INTEGER DEFAULT 1");
+      } catch (e) {
+        // column exists
+      }
+      db.prepare("INSERT INTO migration_meta (key) VALUES (?)").run(migrationKeyV3);
+      logActivity("migration_applied", "storage", { key: migrationKeyV3 });
+    }
+
+    // 7. Clear Placeholder Thread URLs Migration (v4)
+    // Fixes stale thread_url values like /messaging/thread/inbox-XXXX/ that were written
+    // by a bug and cause LinkedIn's "conversation failed to load" error on Sync.
+    const migrationKeyV4 = "clear_placeholder_thread_urls_v4";
+    const migrationDoneV4 = db
+      .prepare("SELECT key FROM migration_meta WHERE key = ?")
+      .get(migrationKeyV4);
+
+    if (!migrationDoneV4) {
+      console.log("Applying placeholder thread URL cleanup (v4)...");
+      try {
+        // Clear inbox-contact-* and inbox-* placeholder thread URLs from leads
+        db.exec(`UPDATE leads SET thread_url = '' WHERE thread_url LIKE '%/messaging/thread/inbox-%'`);
+        // Clear same from inbox_contacts
+        db.exec(`UPDATE inbox_contacts SET thread_url = '' WHERE thread_url LIKE '%/messaging/thread/inbox-%'`);
+        console.log("[DB] Cleared placeholder thread_url values from leads and inbox_contacts.");
+      } catch (e) {
+        console.warn("[DB] v4 migration cleanup error (non-fatal):", e);
+      }
+      db.prepare("INSERT INTO migration_meta (key) VALUES (?)").run(migrationKeyV4);
+      logActivity("migration_applied", "storage", { key: migrationKeyV4 });
+    }
   } catch (err) {
     console.warn("Migration failed:", err);
   }
 
   // 5. Seed default data
-  seedEmailTemplates(db);
 
   logActivity("db_schema_initialized", "storage", {
     timestamp: new Date().toISOString(),
@@ -405,90 +545,6 @@ function ensureColumnExists(
   }
 }
 
-function seedEmailTemplates(db: any): void {
-  const count = db
-    .prepare("SELECT COUNT(*) as c FROM email_templates")
-    .get() as any;
-  if (count.c > 0) return;
-
-  const templates = [
-    {
-      id: "tpl_intro",
-      name: "Introduction Email",
-      subject: "Connecting on an idea for {company}",
-      body: `Hi {firstName},\n\nI came across your profile and was impressed by your work as {role} at {company}.\n\n{industryInsight}\n\nI'd love to connect and share how {yourCompany} helps companies like yours with {yourServices}.\n\nWould you be open to a quick 15-minute chat?\n\nBest regards,\n{yourName}`,
-      variables: [
-        "firstName",
-        "company",
-        "role",
-        "industryInsight",
-        "yourCompany",
-        "yourServices",
-        "yourName",
-      ],
-      type: "intro",
-    },
-    {
-      id: "tpl_welcome",
-      name: "Welcome Email (Post-Accept)",
-      subject: "Great connecting with you, {firstName}!",
-      body: `Hi {firstName},\n\nThanks for accepting my connection request! It's great to be connected.\n\nI noticed {recentPost} — really insightful.\n\nAt {yourCompany}, we specialize in {yourServices}. I think there could be some synergy.\n\nWould you be open to a brief call this week?\n\nCheers,\n{yourName}`,
-      variables: [
-        "firstName",
-        "recentPost",
-        "yourCompany",
-        "yourServices",
-        "yourName",
-      ],
-      type: "welcome",
-    },
-    {
-      id: "tpl_followup",
-      name: "Follow-Up (3 Days)",
-      subject: "Quick follow-up, {firstName}",
-      body: `Hi {firstName},\n\nI reached out a few days ago — just wanted to circle back.\n\nI've been working with companies like {company} on {yourServices}, and I thought you might find it relevant given your focus on {skillMatch}.\n\nNo pressure at all — happy to share a case study if you're interested.\n\nBest,\n{yourName}`,
-      variables: [
-        "firstName",
-        "company",
-        "yourServices",
-        "skillMatch",
-        "yourName",
-      ],
-      type: "follow_up",
-    },
-    {
-      id: "tpl_meeting",
-      name: "Meeting Confirmation",
-      subject: "Meeting Confirmed: {yourName} × {firstName}",
-      body: `Hi {firstName},\n\nGreat news! Our meeting is confirmed.\n\n📅 {meetingDate}\n🔗 {meetingLink}\n\nLooking forward to discussing how {yourServices} can help {company}.\n\nSee you there!\n{yourName}`,
-      variables: [
-        "firstName",
-        "meetingDate",
-        "meetingLink",
-        "yourServices",
-        "company",
-        "yourName",
-      ],
-      type: "meeting_confirm",
-    },
-  ];
-
-  const stmt = db.prepare(`
-        INSERT INTO email_templates (id, name, subject, body, variables_json, type)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-  for (const t of templates) {
-    stmt.run(
-      t.id,
-      t.name,
-      t.subject,
-      t.body,
-      JSON.stringify(t.variables),
-      t.type,
-    );
-  }
-}
 
 // ------ Helper functions ------
 
@@ -508,40 +564,6 @@ export function logActivity(
   ).run(action, module, JSON.stringify(details), status, errorMessage || null, new Date().toISOString());
 }
 
-export function getEmailTemplates(): any[] {
-  const db = getDatabase();
-  return db.prepare("SELECT * FROM email_templates ORDER BY type, name").all();
-}
-
-export function saveEmailTemplate(template: {
-  id: string;
-  name: string;
-  subject: string;
-  body: string;
-  variables: string[];
-  type: string;
-}): void {
-  const db = getDatabase();
-  db.prepare(
-    `
-        INSERT OR REPLACE INTO email_templates (id, name, subject, body, variables_json, type, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `,
-  ).run(
-    template.id,
-    template.name,
-    template.subject,
-    template.body,
-    JSON.stringify(template.variables),
-    template.type,
-    new Date().toISOString()
-  );
-}
-
-export function deleteEmailTemplate(id: string): void {
-  const db = getDatabase();
-  db.prepare("DELETE FROM email_templates WHERE id = ?").run(id);
-}
 
 
 

@@ -172,12 +172,12 @@ export default function Leads() {
             }}
           >
             {[
-              { key: "connection_requested", color: "#f59e0b" },
-              { key: "connection_accepted",  color: "#10b981" },
-              { key: "welcome_sent",         color: "#6366f1" },
-              { key: "in_conversation",      color: "#3b82f6" },
-              { key: "meeting_booked",       color: "#8b5cf6" },
-              { key: "rejected",             color: "#ef4444" },
+              { key: "connection_requested", color: "var(--accent-warning)" },
+              { key: "connection_accepted",  color: "var(--accent-success)" },
+              { key: "welcome_sent",         color: "var(--accent-primary)" },
+              { key: "in_conversation",      color: "var(--accent-primary)" },
+              { key: "meeting_booked",       color: "var(--accent-primary)" },
+              { key: "rejected",             color: "var(--accent-danger)" },
             ].map(({ key, color }) => {
               const count = countByStatus[key] || 0;
               if (count === 0) return null;
@@ -332,7 +332,7 @@ export default function Leads() {
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
                       <button 
                         className="btn btn-secondary btn-sm"
-                        style={{ background: "rgba(220, 38, 38, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(220, 38, 38, 0.2)" }}
+                        style={{ background: "rgba(255, 59, 48, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(255, 59, 48, 0.1)" }}
                         onClick={(e) => handleDeleteLead(lead.id, e)}
                       >
                         <Trash2 size={14} /> Delete

@@ -44,11 +44,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     scopes: ["Mail.Send", "Mail.ReadWrite", "Calendars.ReadWrite", "User.Read"],
   },
 
-  enrichment: {
-    provider: "none",
-    apiKey: "",
-  },
-
   warmup: {
     enabled: true,
     currentDay: 0,

@@ -566,9 +566,6 @@ async function tryAddNoteFlow(page: Page, note: string): Promise<boolean | "LIMI
     "personalized invites with premium",
     "used all your monthly",
     "unlimited personalized invites",
-    "try premium",
-    "1-month free trial",
-    "custom invites",
     "send unlimited",
   ];
 
@@ -581,13 +578,7 @@ async function tryAddNoteFlow(page: Page, note: string): Promise<boolean | "LIMI
       const bodyText = bodyStr.toLowerCase().replace(/\s+/g, ' ');
       const hasKeyword = keywords.some((k) => bodyText.includes(k));
 
-      // Also check for the "Try Premium" button anywhere on the page
-      const hasPremiumBtn = Array.from(document.querySelectorAll('button, a, [role="button"]')).some(el => {
-        const txt = (el.textContent || '').toLowerCase().replace(/\s+/g, ' ');
-        return txt.includes('try premium') || txt.includes('premium for ₹') || txt.includes('premium for $') || txt.includes('premium for £');
-      });
-
-      if (!hasKeyword && !hasPremiumBtn) return { found: false, closeCoords: null };
+      if (!hasKeyword) return { found: false, closeCoords: null };
 
       // Find the close/× button. Strategy:
       //   1. Explicit aria-label selectors (works for artdeco modals)
@@ -661,52 +652,16 @@ async function tryAddNoteFlow(page: Page, note: string): Promise<boolean | "LIMI
     return "LIMIT_DISMISSED_RETRY";
   }
 
-  console.log("[Connector] Waiting for textarea OR limit popup (up to 8s)…");
+  console.log("[Connector] Waiting 4-5 seconds to let the modal or limit popup render...");
+  await humanDelay(4000, 5000);
 
-  const raceResult = await Promise.race([
-    // Detector A: textarea appeared → normal flow
-    page
-      .waitForSelector('textarea[name="message"], textarea.connect-button-send-invite__custom-message', { timeout: 8000 })
-      .then(() => "TEXTAREA" as const)
-      .catch(() => null),
+  // After the delay, check if the limit popup appeared instead of the normal note modal
+  const postWaitCheck = await detectLimitPopupOnPage().catch(() => ({ found: false, closeCoords: null }));
 
-    // Detector B: LinkedIn limit warning / Premium upsell popup appeared.
-    // CRITICAL FIX: Search the ENTIRE document body — the Premium upsell card
-    // is a standalone div NOT inside any artdeco modal container.
-    page
-      .waitForFunction(
-        (keywords: string[]) => {
-          const bodyStr = document.body.innerText || document.body.textContent || "";
-          const bodyText = bodyStr.toLowerCase().replace(/\s+/g, ' ');
-          const hasPremiumBtn = Array.from(document.querySelectorAll('button, a, [role="button"]')).some(el => {
-            const txt = (el.textContent || '').toLowerCase().replace(/\s+/g, ' ');
-            return txt.includes('try premium') || txt.includes('premium for ₹') ||
-                   txt.includes('premium for $') || txt.includes('premium for £');
-          });
-          return (hasPremiumBtn || keywords.some((k) => bodyText.includes(k))) ? "LIMIT" : false;
-        },
-        { timeout: 8000 },
-        LIMIT_KEYWORDS
-      )
-      .then(async (handle) => {
-        if (handle) return await handle.jsonValue();
-        return null;
-      })
-      .catch(() => null),
-  ]);
-
-  // Unwrap JSHandle if needed; treat null (both timed out) as TIMEOUT — NOT as textarea found
-  const resolvedResult: string | null = typeof raceResult === "string" ? raceResult : await page
-    .evaluate((r: any) => (typeof r === "string" ? r : null), raceResult)
-    .catch(() => null);
-
-  if (resolvedResult === "LIMIT") {
-    console.log("[Connector] ❌ LinkedIn invitation limit popup detected (race detector).");
-
-    // Use the same wide DOM-wide dismiss logic
-    const raceCheck = await detectLimitPopupOnPage().catch(() => ({ found: true, closeCoords: null }));
-    if (raceCheck.closeCoords) {
-      const { x, y } = raceCheck.closeCoords;
+  if (postWaitCheck.found) {
+    console.log("[Connector] ❌ LinkedIn invitation limit popup detected after wait.");
+    if (postWaitCheck.closeCoords) {
+      const { x, y } = postWaitCheck.closeCoords;
       console.log(`[Connector] Dismissing limit popup via × at (${Math.round(x)}, ${Math.round(y)})…`);
       await page.mouse.move(x, y, { steps: 12 });
       await humanDelay(200, 400);
@@ -717,29 +672,21 @@ async function tryAddNoteFlow(page: Page, note: string): Promise<boolean | "LIMI
       await page.keyboard.press("Escape");
       await humanDelay(400, 700);
     }
-
-    // Signal to the caller: dismiss succeeded, retry Connect with no note
     return "LIMIT_DISMISSED_RETRY";
   }
 
-  // ── Guard: if both detectors timed out (resolvedResult === null), bail out ──
-  // This prevents the critical bug where a null result falls through and the
-  // code tries to type into a textarea that may not exist.
-  if (resolvedResult !== "TEXTAREA") {
-    if (resolvedResult === null) {
-      console.log("[Connector] ⚠️  Neither textarea nor limit popup detected within 8s. Aborting note flow.");
-    }
-    // If it's LIMIT it was handled above; anything else is unexpected — bail.
-    return false;
-  }
+  // If we made it here, no limit popup was found. We assume the textarea is present
+  // and currently focused by default by LinkedIn.
+  console.log(`[Connector] No limit popup detected. Assuming textarea is active.`);
 
-  // TEXTAREA appeared (normal path) — wait for the rest of the modal to settle
-  const waitMs = 1500 + Math.random() * 1000; // 1.5–2.5s (textarea already found, just let it hydrate)
-  console.log(`[Connector] Textarea confirmed. Waiting ${Math.round(waitMs / 1000)}s for modal to settle…`);
-  await humanDelay(waitMs, waitMs);
+  // Explicitly focus the textarea JUST IN CASE it lost focus, but if the selector fails,
+  // we don't abort—we just blindly type as requested.
+  await page.evaluate(() => {
+    const ta = document.querySelector('textarea') as HTMLTextAreaElement;
+    if (ta) ta.focus();
+  }).catch(() => null);
 
   // ── Step 3: Type the AI note character by character via page.keyboard ────
-  // LinkedIn auto-focuses the textarea — keyboard events go straight into it.
   console.log(`[Connector] Composing AI note directly via keyboard (${note.length} chars)…`);
 
   // Build adjacent-key typo map for human-like errors

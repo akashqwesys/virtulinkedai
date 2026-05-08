@@ -19,7 +19,6 @@ import type {
   SendWelcomeEmailPayload,
   SendFollowupEmailPayload,
   SendMeetingConfirmationPayload,
-  EnrichLeadEmailPayload,
   PublishScheduledPostPayload,
   RunEngagementSessionPayload,
   CheckMessagesPayload,
@@ -37,7 +36,6 @@ import { sendConnectionRequest } from "../linkedin/connector";
 import { sendMessage, sendWelcomeDM, sendReplyInThread } from "../linkedin/messenger";
 import { generatePersonalizedEmail } from "../ai/personalizer";
 import { sendPersonalizedLeadEmail } from "../microsoft/email";
-import { enrichLeadEmail } from "../ai/emailEnricher";
 import { createTextPost } from "../content/scheduler";
 import { runEngagementSession } from "../engagement/feed";
 import { checkAllPendingConnections } from "../linkedin/connectionChecker";
@@ -154,15 +152,37 @@ async function ensureBrowserRunning(): Promise<void> {
   }
 
   const status = getBrowserStatus();
-  if (status.status !== "running" || !getPage()) {
+  const wasNotRunning = status.status !== "running" || !getPage();
+
+  if (wasNotRunning) {
     console.log("[Worker] Browser not running — attempting auto-launch...");
     const result = await launchBrowser();
     if (!result.success) {
       throw new Error(`Browser auto-launch failed: ${result.error || "Unknown error"}. Please launch the browser manually from the Dashboard.`);
     }
-    // Wait a moment for the browser to stabilize
-    await new Promise((r) => setTimeout(r, 2000));
     console.log("[Worker] Browser auto-launched successfully.");
+  }
+
+  // ── Page Stabilization Wait ─────────────────────────────────────────
+  // Whether we just launched/reconnected OR the browser was already running,
+  // the page may be mid-navigation (LinkedIn's own redirects, prior job's
+  // final page.goto, etc.). If we call page.evaluate() while the page is
+  // still loading, Puppeteer throws "Execution context was destroyed".
+  // We wait here for the page to reach a stable state before returning.
+  const page = getPage();
+  if (page) {
+    try {
+      // Poll until the page reports 'complete' load state (max 15s)
+      await page.waitForFunction(
+        () => document.readyState === 'complete',
+        { timeout: 15000 }
+      );
+    } catch (_) {
+      // If it times out (e.g. stuck on a spinner), continue anyway.
+      // The scraper has its own waitForSelector guards.
+    }
+    // Extra buffer: LinkedIn's SPA router fires after DOMContentLoaded
+    await new Promise((r) => setTimeout(r, wasNotRunning ? 3000 : 500));
   }
 }
 
@@ -170,10 +190,10 @@ async function ensureBrowserRunning(): Promise<void> {
 // Campaign Guard — Ensure campaign is active before running jobs
 // ============================================================
 function enforceCampaignActive(campaignId: string | null | undefined): void {
-  if (!campaignId) return;
+  if (!campaignId) return; // System-level jobs have no campaignId — they use enforceAnyActiveCampaign() instead
   const db = getDatabase();
   const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(campaignId) as any;
-  if (campaign && campaign.status !== "active") {
+  if (!campaign || campaign.status !== "active") {
     throw new Error("Job paused: Campaign is paused or not active.");
   }
 }
@@ -234,21 +254,6 @@ jobQueue.process<ScrapeProfilePayload>(
     if (!profile) throw new Error(`Failed to scrape profile: ${linkedinUrl}`);
 
     _limitManager.record("profileViews");
-
-    // Attempt enrichment if email is missing (for immediate fallback workflow)
-    if (!profile.email && _settings?.enrichment) {
-      console.log(`[Worker] Attempting inline enrichment for ${profile.firstName} ${profile.lastName}...`);
-      const enriched = await enrichLeadEmail(
-        profile.firstName, 
-        profile.lastName, 
-        profile.company || "", 
-        _settings.enrichment
-      );
-      if (enriched) {
-        profile.email = enriched;
-        console.log(`[Worker] Enriched email inline during scraping: ${enriched}`);
-      }
-    }
 
     // Persist to DB
     db.prepare(
@@ -402,23 +407,6 @@ jobQueue.process<SendConnectionPayload>(
       // Attempt to resolve recipient email
       let recipientEmail: string = lead.email || "";
 
-      if (!recipientEmail && _settings?.enrichment) {
-        console.log(`[Worker] No email stored for lead ${leadId} — attempting enrichment via Hunter/Apollo...`);
-        const enriched = await enrichLeadEmail(
-          lead.first_name || profile.firstName,
-          lead.last_name || profile.lastName,
-          lead.company || profile.company,
-          _settings.enrichment,
-        );
-        if (enriched) {
-          recipientEmail = enriched;
-          // Persist to DB so future jobs don't need to re-enrich
-          db.prepare("UPDATE leads SET email = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?")
-            .run(enriched, leadId);
-          console.log(`[Worker] Email enriched for lead ${leadId}: ${enriched}`);
-        }
-      }
-
       if (recipientEmail) {
         jobQueue.enqueue<SendIntroEmailPayload>(
           JOB_TYPES.SEND_INTRO_EMAIL,
@@ -427,7 +415,7 @@ jobQueue.process<SendConnectionPayload>(
         );
         console.log(`[Worker] SEND_INTRO_EMAIL enqueued for ${profile.firstName} ${profile.lastName} → ${recipientEmail}`);
       } else {
-        console.log(`[Worker] No email found for lead ${leadId} after enrichment. Cannot send email fallback.`);
+        console.log(`[Worker] No email found for lead ${leadId} in database. Cannot send email fallback.`);
       }
 
       // Advance lead status so the pipeline doesn't re-attempt the connection
@@ -482,7 +470,6 @@ jobQueue.process<CheckAcceptancePayload>(
     if (!_settings) return;
     enforceAnyActiveCampaign(); // skip all LinkedIn work if no campaign is active
     await ensureBrowserRunning();
-    enforceCampaignActive(job.payload.campaignId);
 
     const db = getDatabase();
 
@@ -772,72 +759,6 @@ jobQueue.process<SendMeetingConfirmationPayload>(
 );
 
 // ============================================================
-// Handler: Enrich Lead Email (find business email via API)
-// ============================================================
-
-jobQueue.process<EnrichLeadEmailPayload>(
-  JOB_TYPES.ENRICH_LEAD_EMAIL,
-  async (job: Job<EnrichLeadEmailPayload>) => {
-    const { leadId, campaignId } = job.payload;
-    enforceCampaignActive(campaignId);
-
-    const db = getDatabase();
-    const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadId) as any;
-
-    if (!lead) {
-      console.log(`[Worker] Skipping ENRICH_LEAD_EMAIL — lead ${leadId} was deleted.`);
-      return;
-    }
-
-    // Skip if email already found (could be set by a parallel scrape job)
-    if (lead.email) {
-      console.log(`[Worker] ENRICH_LEAD_EMAIL skipped — lead ${leadId} already has email: ${lead.email}`);
-      jobQueue.enqueue<SendFollowupEmailPayload>(
-        JOB_TYPES.SEND_FOLLOWUP_EMAIL,
-        { leadId, campaignId, recipientEmail: lead.email },
-        { delayMs: 0, priority: 100 },
-      );
-      return;
-    }
-
-    const enrichedEmail = await enrichLeadEmail(
-      lead.first_name || "",
-      lead.last_name || "",
-      lead.company || "",
-      _settings?.enrichment,
-    );
-
-    if (!enrichedEmail) {
-      logActivity("enrichment_no_email_found", "enrichment", {
-        leadId,
-        firstName: lead.first_name,
-        lastName: lead.last_name,
-        company: lead.company,
-      });
-      return; // Nothing more we can do without an email
-    }
-
-    // Persist the enriched email
-    db.prepare(
-      `UPDATE leads SET email = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
-    ).run(enrichedEmail, leadId);
-
-    logActivity("enrichment_email_saved", "enrichment", {
-      leadId,
-      email: enrichedEmail,
-      company: lead.company,
-    });
-
-    // Chain directly into follow-up email now that we have the address
-    jobQueue.enqueue<SendFollowupEmailPayload>(
-      JOB_TYPES.SEND_FOLLOWUP_EMAIL,
-      { leadId, campaignId, recipientEmail: enrichedEmail },
-      { delayMs: 0, priority: 100 },
-    );
-  },
-);
-
-// ============================================================
 // Handler: Check DM Follow-ups
 // ============================================================
 
@@ -851,10 +772,12 @@ jobQueue.process<CheckDmFollowupsPayload>(
     
     // Find leads waiting for reply who haven't progressed
     const leads = db.prepare(`
-      SELECT id, campaign_id, first_name, last_name, headline, company, linkedin_url, raw_data_json, chatbot_state 
-      FROM leads 
-      WHERE chatbot_state IN ('waiting_reply', 'waiting_reply_1', 'waiting_reply_2')
-      AND status NOT IN ('handed_off', 'meeting_booked')
+      SELECT l.id, l.campaign_id, l.first_name, l.last_name, l.headline, l.company, l.linkedin_url, l.raw_data_json, l.chatbot_state 
+      FROM leads l
+      INNER JOIN campaigns c ON l.campaign_id = c.id
+      WHERE l.chatbot_state IN ('waiting_reply', 'waiting_reply_1', 'waiting_reply_2')
+      AND l.status NOT IN ('handed_off', 'meeting_booked')
+      AND c.status = 'active'
     `).all() as any[];
 
     for (const lead of leads) {
@@ -884,13 +807,15 @@ jobQueue.process<CheckDmFollowupsPayload>(
 
         console.log(`[Worker] Triggering ${objective} for ${lead.first_name} ${lead.last_name}`);
 
-        const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { 
+        const parsedData = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : {};
+        const profile = {
+          ...parsedData,
           id: lead.id, 
           linkedinUrl: lead.linkedin_url,
-          firstName: lead.first_name || "",
-          lastName: lead.last_name || "",
-          headline: lead.headline || "",
-          company: lead.company || ""
+          firstName: parsedData.firstName || lead.first_name || "Unknown",
+          lastName: parsedData.lastName || lead.last_name || "",
+          headline: parsedData.headline || lead.headline || "",
+          company: parsedData.company || lead.company || ""
         };
 
         const context = {
@@ -986,12 +911,15 @@ jobQueue.process<CheckMessagesPayload>(
         continue;
       }
 
-      if (lead.campaign_id) {
-        const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(lead.campaign_id) as any;
-        if (campaign && campaign.status !== 'active') {
-          logActivity("message_ignored_campaign_paused", "linkedin", { sender: msg.senderName, url: msg.senderUrl });
-          continue;
-        }
+      if (!lead.campaign_id) {
+        logActivity("message_ignored_no_campaign", "linkedin", { sender: msg.senderName, url: msg.senderUrl });
+        continue;
+      }
+
+      const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(lead.campaign_id) as any;
+      if (!campaign || campaign.status !== 'active') {
+        logActivity("message_ignored_campaign_paused", "linkedin", { sender: msg.senderName, url: msg.senderUrl });
+        continue;
       }
 
       const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { firstName: msg.senderName, linkedinUrl: msg.senderUrl };
@@ -1047,7 +975,10 @@ jobQueue.process<SendReplyDmPayload>(
     const { leadId, linkedinUrl, replyContent, threadId } = job.payload;
     const db = getDatabase();
     const lead = db.prepare("SELECT campaign_id FROM leads WHERE id = ?").get(leadId) as any;
-    enforceCampaignActive(lead?.campaign_id);
+    if (!lead?.campaign_id) {
+      throw new Error("Job paused: Campaign is paused — lead has no associated campaign.");
+    }
+    enforceCampaignActive(lead.campaign_id);
 
     if (!_limitManager?.canPerform("messages"))
       throw new Error("Daily message limit reached");
@@ -1128,13 +1059,26 @@ jobQueue.process<CheckLeadThreadPayload>(
     await ensureBrowserRunning();
 
     const { leadId, linkedinUrl, campaignId } = job.payload;
+
+    // Strict campaign check: if the campaign is missing or paused, cancel this job immediately.
+    // We do NOT use enforceCampaignActive() here because that silently passes null (for system jobs).
+    // CHECK_LEAD_THREAD is always a lead-level job — it must have a valid, active campaign.
+    if (!campaignId) {
+      throw new Error("Job paused: Campaign is paused — lead has no associated campaign.");
+    }
     enforceCampaignActive(campaignId);
 
     const db = getDatabase();
     const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(leadId) as any;
     if (!lead) return;
 
-    const profile = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : { firstName: lead.first_name, lastName: lead.last_name, linkedinUrl };
+    const parsedData = lead.raw_data_json ? JSON.parse(lead.raw_data_json) : {};
+    const profile = {
+      ...parsedData,
+      firstName: parsedData.firstName || lead.first_name || "Unknown",
+      lastName: parsedData.lastName || lead.last_name || "",
+      linkedinUrl
+    };
 
     const context = {
       yourName: _settings?.personalization?.yourName || "User",

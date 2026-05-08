@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Rocket, Plus, Trash2, Play, Pause, Zap, BarChart2, LineChart, 
   Search, Eye, UserPlus, MessageSquare, Mail, AlertTriangle, 
-  Download, Bot, User, CheckCircle2, XCircle
+  Download, Bot, User, CheckCircle2, XCircle, Terminal
 } from "lucide-react";
 import Modal from "../components/Modal";
+import ActivityLogTerminal from "../components/ActivityLogTerminal";
 
 interface CampaignStep {
   id: string;
@@ -91,6 +92,9 @@ export default function Campaigns() {
   // Lead Summary Modal
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isRemovingLead, setIsRemovingLead] = useState(false);
+
+  // Terminal State
+  const [showTerminal, setShowTerminal] = useState(false);
 
   const selectedCampaignIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -354,7 +358,7 @@ export default function Campaigns() {
         </div>
 
         {campaigns.length === 0 ? (
-          <div className="card text-center" style={{ padding: "80px 20px" }}>
+          <div className="card text-center" style={{ padding: "var(--space-8)" }}>
             <div style={{ marginBottom: "16px", color: "var(--accent-primary)", display: "flex", justifyContent: "center" }}><Rocket size={48} /></div>
             <h3 className="text-xl font-bold mb-2">Ready to automate?</h3>
             <p className="text-muted mb-6">
@@ -395,7 +399,7 @@ export default function Campaigns() {
                   </span>
                   <button 
                     className="btn btn-secondary btn-sm"
-                    style={{ marginLeft: "8px", background: "rgba(239, 68, 68, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(239, 68, 68, 0.2)" }}
+                    style={{ marginLeft: "8px", background: "rgba(255, 59, 48, 0.1)", color: "var(--accent-danger)", border: "1px solid rgba(255, 59, 48, 0.1)" }}
                     onClick={(e) => { e.stopPropagation(); handleDeleteCampaign(campaign.id); }}
                   >
                     <Trash2 size={14} />
@@ -522,7 +526,7 @@ export default function Campaigns() {
                         background: importMode === "page" ? "var(--accent-primary)" : "transparent",
                         color: importMode === "page" ? "#fff" : "var(--text-muted)",
                       }}
-                    ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><Bot size={14}/> AI Page Import</span></button>
+                    ><span style={{display:"flex", alignItems:"center", gap:"6px", justifyContent: "center"}}><Bot size={14}/> Search Base Import</span></button>
                   </div>
 
                   {/* Profile URLs Mode */}
@@ -543,15 +547,15 @@ export default function Campaigns() {
                     </>
                   )}
 
-                  {/* AI Page Import Mode */}
+                  {/* Search Base Import Mode */}
                   {importMode === "page" && (
                     <>
                       <div style={{
                         padding: "12px 14px", marginBottom: "14px", borderRadius: "10px",
-                        background: "rgba(99, 102, 241, 0.07)", border: "1px solid rgba(99, 102, 241, 0.2)",
+                        background: "var(--accent-primary-glow)", border: "1px solid var(--accent-primary-glow)",
                         fontSize: "0.8125rem", lineHeight: 1.6, color: "var(--text-secondary)",
                       }}>
-                        <strong style={{ color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "6px" }}><Bot size={16}/> AI-Powered Bulk Import</strong><div style={{marginTop:"4px"}}/>
+                        <strong style={{ color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "6px" }}><Bot size={16}/> Search Base Import</strong><div style={{marginTop:"4px"}}/>
                         Paste a LinkedIn <strong>search results page</strong>, <strong>company "People" page</strong>, or <strong>alumni page</strong> URL.
                       </div>
                       <input
@@ -569,8 +573,8 @@ export default function Campaigns() {
                     <div style={{
                       marginBottom: "12px",
                       padding: "10px 14px",
-                      background: "rgba(239, 68, 68, 0.08)",
-                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      background: "rgba(255, 59, 48, 0.1)",
+                      border: "1px solid rgba(255, 59, 48, 0.1)",
                       borderRadius: "8px",
                       color: "var(--accent-danger)",
                       fontSize: "13px",
@@ -639,6 +643,12 @@ export default function Campaigns() {
           </div>
           <div className="flex gap-3">
             <button
+              className="btn btn-secondary"
+              onClick={() => setShowTerminal(!showTerminal)}
+            >
+              <Terminal size={14} className="mr-1" /> {showTerminal ? "Hide Logs" : "Show Logs"}
+            </button>
+            <button
               className={`btn ${selectedCampaign.status === "active" ? "btn-secondary" : "btn-primary"}`}
               onClick={async () => {
                 if (selectedCampaign.status === "active") {
@@ -696,9 +706,11 @@ export default function Campaigns() {
 
       </div>
 
-      {/* Tab Content */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
-        {activeTab === "workflow" && (
+      {/* Tab Content & Sidebar Container */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Main Tab Content */}
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          {activeTab === "workflow" && (
           <div style={{ display: "flex", height: "100%" }}>
             {/* Left: Sequence List */}
             <div
@@ -806,6 +818,11 @@ export default function Campaigns() {
                       <div className="text-xs font-medium text-muted">
                         Delay: {step.delayHours} hours
                       </div>
+                      {step.content && (
+                        <p className="text-sm text-muted line-clamp-2 mt-1">
+                          {step.content}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1137,7 +1154,7 @@ export default function Campaigns() {
           return (
           <div style={{ padding: "32px" }}>
             <div style={{ display: "flex", gap: "24px", marginBottom: "32px", width: "100%" }}>
-              <div className="card" style={{ flex: 1, borderTop: "4px solid #3b82f6", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+              <div className="card" style={{ flex: 1, borderTop: "4px solid var(--accent-primary)", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
                 <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)", marginBottom: "8px" }}>
                   Processed
                 </h4>
@@ -1155,7 +1172,7 @@ export default function Campaigns() {
                 </h4>
                 <div className="text-4xl font-bold" style={{ color: "var(--text-main)" }}>{total > 0 ? ((replied / total) * 100).toFixed(1) : "0.0"}%</div>
               </div>
-              <div className="card" style={{ flex: 1, borderTop: "4px solid #10b981", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+              <div className="card" style={{ flex: 1, borderTop: "4px solid var(--accent-success)", padding: "24px", background: "var(--bg-tertiary)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
                 <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)", marginBottom: "8px" }}>
                   Meetings
                 </h4>
@@ -1181,9 +1198,27 @@ export default function Campaigns() {
             </div>
           </div>
         )})()}
+        </div>
+
+        {/* LOG TERMINAL SIDEBAR */}
+        {showTerminal && (
+          <div style={{
+            width: 380, flexShrink: 0,
+            borderLeft: "1px solid var(--border-subtle)",
+            background: "var(--bg-card)",
+            display: "flex", flexDirection: "column",
+            zIndex: 10
+          }}>
+            <ActivityLogTerminal 
+              moduleFilter="campaign, queue, scraper, ai, pipeline, network, inmail" 
+              title={`Campaign Logs: ${selectedCampaign.name}`}
+              height="100%"
+              onClose={() => setShowTerminal(false)}
+              className="border-none rounded-none"
+            />
+          </div>
+        )}
       </div>
-
-
 
       {/* Lead Summary Modal */}
       {selectedLead && (
@@ -1260,7 +1295,7 @@ export default function Campaigns() {
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", borderTop: "1px solid var(--border-subtle)", paddingTop: "16px" }}>
               <button
                 className="btn btn-secondary"
-                style={{ color: "var(--accent-danger)", borderColor: "rgba(220,38,38,0.4)", background: "rgba(220,38,38,0.06)" }}
+                style={{ color: "var(--accent-danger)", borderColor: "rgba(255, 59, 48, 0.1)", background: "rgba(255, 59, 48, 0.1)" }}
                 onClick={async () => {
                   // Escalating warning message based on pipeline stage
                   const advancedStatuses = ["connection_accepted", "email_sent", "welcome_sent", "follow_up_sent", "replied", "in_conversation", "meeting_booked", "converted"];

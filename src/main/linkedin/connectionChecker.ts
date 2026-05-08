@@ -57,9 +57,9 @@ export async function checkAllPendingConnections(settings?: AppSettings): Promis
     .prepare(
       `SELECT l.id AS leadId, l.linkedin_url AS linkedinUrl, l.campaign_id, l.connection_requested_at AS requestedAt
        FROM leads l
-       LEFT JOIN campaigns c ON l.campaign_id = c.id
+       INNER JOIN campaigns c ON l.campaign_id = c.id
        WHERE l.status IN ('connection_requested', 'waiting_acceptance', 'connection_sent')
-         AND (l.campaign_id IS NULL OR c.status = 'active')
+         AND c.status = 'active'
        ORDER BY l.connection_requested_at ASC`,
     )
     .all() as PendingConnection[];
@@ -206,10 +206,10 @@ export async function checkAllPendingConnections(settings?: AppSettings): Promis
     const staleLeads = db.prepare(`
       SELECT l.id, l.email, l.first_name, l.last_name, l.company, l.campaign_id
       FROM leads l
-      LEFT JOIN campaigns c ON l.campaign_id = c.id
+      INNER JOIN campaigns c ON l.campaign_id = c.id
       WHERE l.status IN ('connection_requested', 'waiting_acceptance', 'connection_sent')
         AND l.connection_requested_at < datetime('now', '-3 days')
-        AND (l.campaign_id IS NULL OR c.status = 'active')
+        AND c.status = 'active'
         AND NOT EXISTS (
           SELECT 1 FROM emails e
           WHERE e.lead_id = l.id AND e.type = 'follow_up'
@@ -227,12 +227,6 @@ export async function checkAllPendingConnections(settings?: AppSettings): Promis
             JOB_TYPES.SEND_FOLLOWUP_EMAIL,
             { leadId: staleLead.id, campaignId: staleLead.campaign_id, recipientEmail: staleLead.email },
             { delayMs: 0, priority: 4 },
-          );
-        } else {
-          jobQueue.enqueue(
-            JOB_TYPES.ENRICH_LEAD_EMAIL,
-            { leadId: staleLead.id, campaignId: staleLead.campaign_id },
-            { delayMs: 0, priority: 3 },
           );
         }
       }
@@ -521,9 +515,9 @@ export async function checkAllEngagedLeads(settings?: AppSettings): Promise<void
   const engagedLeads = db.prepare(`
     SELECT l.id, l.campaign_id, l.linkedin_url, l.status, l.first_name, l.last_name, l.company, l.headline
     FROM leads l
-    LEFT JOIN campaigns c ON l.campaign_id = c.id
+    INNER JOIN campaigns c ON l.campaign_id = c.id
     WHERE l.status IN ('welcome_sent', 'in_conversation', 'replied')
-      AND (l.campaign_id IS NULL OR c.status = 'active')
+      AND c.status = 'active'
   `).all() as any[];
 
   if (engagedLeads.length === 0) {

@@ -10,7 +10,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "general" | "limits" | "ai" | "microsoft" | "chatbot" | "enrichment" | "database"
+    "general" | "limits" | "ai" | "microsoft" | "chatbot" | "database"
   >("general");
 
   // Microsoft 365 connection state
@@ -145,7 +145,6 @@ export default function Settings() {
     { key: "ai", label: <><Bot size={14} className="mr-1"/> AI Engine</> },
     { key: "microsoft", label: <><Mail size={14} className="mr-1"/> Microsoft 365</> },
     { key: "chatbot", label: <><MessageSquare size={14} className="mr-1"/> Chatbot</> },
-    { key: "enrichment", label: <><Search size={14} className="mr-1"/> Enrichment</> },
     { key: "database", label: <><Database size={14} className="mr-1"/> Database</> },
   ] as const;
 
@@ -266,7 +265,7 @@ export default function Settings() {
                     style={{
                       padding: "6px 12px",
                       background: settings.workingHours.workDays.includes(i)
-                        ? "rgba(99, 102, 241, 0.15)"
+                        ? "var(--accent-primary-glow)"
                         : "var(--bg-secondary)",
                       border: `1px solid ${
                         settings.workingHours.workDays.includes(i)
@@ -621,10 +620,10 @@ export default function Settings() {
               style={{
                 padding: "20px",
                 background: msStatus?.connected
-                  ? "rgba(34, 197, 94, 0.08)"
-                  : "rgba(99, 102, 241, 0.08)",
+                  ? "rgba(52, 199, 89, 0.1)"
+                  : "var(--accent-primary-glow)",
                 borderRadius: "12px",
-                border: `1px solid ${msStatus?.connected ? "rgba(34, 197, 94, 0.3)" : "rgba(99, 102, 241, 0.25)"}`,
+                border: `1px solid ${msStatus?.connected ? "rgba(52, 199, 89, 0.1)" : "var(--accent-primary-glow)"}`,
                 marginTop: "8px",
               }}
             >
@@ -638,10 +637,10 @@ export default function Settings() {
                     background: msStatus === null
                       ? "var(--text-muted)"
                       : msStatus.connected
-                      ? "#22c55e"
-                      : "#ef4444",
+                      ? "var(--accent-success)"
+                      : "var(--accent-danger)",
                     flexShrink: 0,
-                    boxShadow: msStatus?.connected ? "0 0 8px rgba(34,197,94,0.6)" : undefined,
+                    boxShadow: msStatus?.connected ? "0 0 8px rgba(52, 199, 89, 0.1)" : undefined,
                   }}
                 />
                 <div style={{ flex: 1 }}>
@@ -854,79 +853,6 @@ export default function Settings() {
               <label className="text-sm">
                 Auto-handoff to human on negative sentiment detection
               </label>
-            </div>
-          </div>
-        )}
-
-        {/* Enrichment */}
-        {activeTab === "enrichment" && (
-          <div className="card animate-fadeIn">
-            <h3 className="card-title" style={{ marginBottom: "8px" }}>
-              Email Enrichment
-            </h3>
-            <p className="text-sm text-muted" style={{ marginBottom: "24px" }}>
-              Automatically find business emails for leads who don't share
-              contact info. Uses Hunter.io or Apollo.io APIs.
-            </p>
-
-            <div className="input-group">
-              <label className="input-label">Enrichment Provider</label>
-              <select
-                className="input"
-                value={settings.enrichment?.provider || "none"}
-                onChange={(e) =>
-                  updateSettings("enrichment.provider", e.target.value)
-                }
-              >
-                <option value="none">None (disabled)</option>
-                <option value="hunter">Hunter.io</option>
-                <option value="apollo">Apollo.io</option>
-              </select>
-            </div>
-
-            {settings.enrichment?.provider !== "none" && (
-              <div className="input-group">
-                <label className="input-label">
-                  {settings.enrichment?.provider === "hunter"
-                    ? "Hunter.io API Key"
-                    : "Apollo.io API Key"}
-                </label>
-                <input
-                  className="input"
-                  type="password"
-                  value={settings.enrichment?.apiKey || ""}
-                  onChange={(e) =>
-                    updateSettings("enrichment.apiKey", e.target.value)
-                  }
-                  placeholder="Paste your API key here"
-                />
-              </div>
-            )}
-
-            <div
-              style={{
-                padding: "16px",
-                background: "rgba(99, 102, 241, 0.08)",
-                borderRadius: "8px",
-                border: "1px solid rgba(99, 102, 241, 0.25)",
-                marginTop: "16px",
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 600,
-                  marginBottom: "8px",
-                  color: "var(--accent-primary)",
-                }}
-              >
-                ℹ️ How it works
-              </div>
-              <div className="text-sm text-muted">
-                When a connection request is pending for more than 3 days and
-                we don't have an email, the system will call the configured
-                provider to find a business email, then send a personalized
-                follow-up via Microsoft 365.
-              </div>
             </div>
           </div>
         )}

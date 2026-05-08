@@ -206,11 +206,7 @@ async function expandAllHiddenContent(page: Page): Promise<void> {
     // Experience item "see more" on descriptions
     "main #experience ~ div button.inline-show-more-text__button",
     "main section:has(#experience) .pvs-list__item--line-separated button.inline-show-more-text__button",
-    // "Show all X experiences" / "Show all X skills" list expanders
-    "main #experience ~ div a[href*='detail/experience']",
-    "main #skills ~ div a[href*='detail/skills']",
     "main section:has(#skills) button[aria-label*='Show all']",
-    "main section:has(#skills) a[aria-label*='Show all']",
   ];
 
   for (const selector of expansionSelectors) {
@@ -1090,8 +1086,44 @@ export async function scrapeProfile(
 
   try {
     if (!skipNavigation) {
-      // Navigate to profile using SPA routing
-      await inPageNavigate(page, profileUrl);
+      // \u2500\u2500 Robust Navigation with Stabilization Retry \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      // "Execution context was destroyed" is thrown when evaluate() is called
+      // during a page navigation (e.g., on app first start when the browser
+      // is still finishing loading the previous page). We retry up to 3 times
+      // with increasing wait periods, and fall back to page.goto() on retries.
+      let navSuccess = false;
+      for (let attempt = 1; attempt <= 3 && !navSuccess; attempt++) {
+        try {
+          // On retries, wait for page to fully settle before trying again
+          if (attempt > 1) {
+            console.log(`[Scraper] Navigation attempt ${attempt}/3 \u2014 waiting for page to stabilize...`);
+            await new Promise(r => setTimeout(r, attempt * 3000));
+            try {
+              await page.waitForFunction(() => document.readyState === 'complete', { timeout: 10000 });
+            } catch (_) { /* continue regardless */ }
+          }
+
+          if (attempt === 1) {
+            // First attempt: use the standard SPA-safe in-page navigate
+            await inPageNavigate(page, profileUrl);
+          } else {
+            // Fallback: hard goto() — this is more reliable when the page is in a bad state
+            console.log(`[Scraper] Falling back to page.goto() for attempt ${attempt}`);
+            await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 2000));
+          }
+
+          navSuccess = true;
+        } catch (navErr: any) {
+          const msg = navErr instanceof Error ? navErr.message : String(navErr);
+          const isContextDestroyed = msg.includes('Execution context was destroyed') || msg.includes('Cannot inspect context');
+          if (isContextDestroyed && attempt < 3) {
+            console.warn(`[Scraper] Navigation failed (context destroyed, attempt ${attempt}/3). Retrying...`);
+          } else {
+            throw navErr; // Unrecoverable or last attempt
+          }
+        }
+      }
       await pageLoadDelay();
     } else {
       console.log(`[Scraper] Bypassing explicit navigation, assuming already on profile: ${profileUrl}`);
@@ -1880,29 +1912,6 @@ async function _profileInteractionPhase(
 
     if (profile) {
       console.log(`[Import] 📋 Scraped: ${profile.firstName} ${profile.lastName} @ ${profile.company}`);
-
-      // ── Inline Enrichment ───────────────────────────────────────────────
-      console.log(`[Import-Debug] Native Scrape Email: ${profile.email || 'none'}, Settings Object Exists: !!${!!settings}, Enrichment Config: ${JSON.stringify(settings?.enrichment)}`);
-      
-      if (!profile.email && settings?.enrichment && settings.enrichment.provider !== 'none') {
-        console.log(`[Import] Attempting inline enrichment for ${profile.firstName} ${profile.lastName}...`);
-        const { enrichLeadEmail } = await import("../ai/emailEnricher");
-        const enriched = await enrichLeadEmail(
-          profile.firstName, 
-          profile.lastName, 
-          profile.company || "", 
-          settings.enrichment
-        );
-        if (enriched) {
-          profile.email = enriched;
-          console.log(`[Import] Enriched email inline during import: ${enriched}`);
-          if (profile.id) {
-            const { getDatabase } = await import("../storage/database");
-            const db = getDatabase();
-            db.prepare(`UPDATE leads SET email = ? WHERE id = ?`).run(enriched, profile.id);
-          }
-        }
-      }
 
       // ── Notify caller immediately (profile-by-profile queue insert) ──────
       if (outreachOptions.onProfileScraped) {

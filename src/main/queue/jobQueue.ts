@@ -331,7 +331,29 @@ export class JobQueue {
       const isLimitError = message.toLowerCase().includes("limit reached");
       const isPausedError = isWorkingHoursError || isAutoPilotError || isCampaignPausedError || isLimitError;
 
-      if (!isPausedError && job.attempts >= job.maxAttempts) {
+      // Lead-level job types that are tightly bound to a specific campaign.
+      // If their campaign is paused, there's no point retrying them — cancel immediately.
+      const leadLevelJobTypes = new Set([
+        'SCRAPE_PROFILE', 'SEND_CONNECTION', 'CHECK_LEAD_THREAD',
+        'SEND_WELCOME_DM', 'SEND_REPLY_DM', 'SEND_WELCOME_EMAIL',
+        'SEND_FOLLOWUP_EMAIL', 'SEND_MEETING_CONFIRMATION', 'ENRICH_LEAD_EMAIL',
+      ]);
+      const isLeadLevelJob = leadLevelJobTypes.has(job.type);
+
+      if (isCampaignPausedError && isLeadLevelJob) {
+        // Hard-cancel lead-level jobs when their campaign is paused.
+        // They will be re-queued by PipelineRunner when the campaign resumes.
+        db.prepare(
+          `UPDATE job_queue
+           SET status = 'cancelled', completed_at = datetime('now'), error_message = ?
+           WHERE id = ?`
+        ).run(message, job.id);
+
+        logActivity("job_cancelled_campaign_paused", "queue", {
+          jobId: job.id,
+          type: job.type,
+        });
+      } else if (!isPausedError && job.attempts >= job.maxAttempts) {
         // Exhausted retries — mark as permanently failed
         db.prepare(
           `

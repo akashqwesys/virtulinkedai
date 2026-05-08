@@ -137,14 +137,6 @@ export interface EmailRecord {
   repliedAt: string | null;
 }
 
-export interface EmailTemplate {
-  id: string;
-  name: string;
-  subject: string;
-  body: string;
-  variables: string[];
-  type: "intro" | "follow_up" | "welcome" | "meeting_confirm";
-}
 
 // ============================================================
 // Conversation / Chatbot Types
@@ -251,12 +243,6 @@ export interface AppSettings {
     scopes: string[];
   };
 
-  // Email Enrichment (finds business emails for leads missing contact info)
-  enrichment: {
-    provider: "apollo" | "hunter" | "none";
-    apiKey: string;
-  };
-
   // Warm-up
   warmup: {
     enabled: boolean;
@@ -355,10 +341,6 @@ export const IPC_CHANNELS = {
   SALES_NAV_SCRAPE: "sales-nav:scrape",
   SALES_NAV_INMAIL: "sales-nav:inmail",
 
-  // Email Templates
-  EMAIL_TEMPLATES_LIST: "email-templates:list",
-  EMAIL_TEMPLATES_SAVE: "email-templates:save",
-  EMAIL_TEMPLATES_DELETE: "email-templates:delete",
 
   // Connection Checker
   CONNECTION_CHECKER_START: "connection-checker:start",
@@ -387,8 +369,14 @@ export const IPC_CHANNELS = {
   INBOX_SCHEDULE_MEETING: "inbox:schedule-meeting",
   INBOX_POLL_UNREAD: "inbox:poll-unread",
   INBOX_BROWSER_STATUS: "inbox:browser-status",
+  INBOX_BROWSER_LAUNCH: "inbox:browser-launch",
   INBOX_NEW_MESSAGE: "inbox:new-message",
   INBOX_AI_REPLY: "inbox:ai-reply",
+
+  // InMail
+  INMAIL_PROCESS_DIRECT: "inmail:process-direct",
+  INMAIL_LIST: "inmail:list",
+  INMAIL_GET_FOR_PROFILE: "inmail:get-for-profile",
 
   // General
   APP_READY: "app:ready",

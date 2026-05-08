@@ -36,60 +36,65 @@ export async function generateChatbotReply(
     build_rapport:
       `OBJECTIVE: BUILD RAPPORT
 1. Start by warmly appreciating them for connecting (e.g., "Great to connect with you!", "Thanks for accepting my connection!").
-2. Write a crisp, conversational opening message to ${firstName} at ${company}.
-3. USE THE CONTEXT: Actively analyze their LEAD PROFILE and the CONVERSATION SO FAR. Use your Veda AI Lab LLC knowledge invisibly as a framework to form a highly intelligent, tailored question about their specific industry/role.
-4. DO NOT pitch your product or mention your solutions. DO NOT say "we solve this" or "our work with similar organizations". Your intent is purely networking and learning.
-5. Ask how their organization works, how they handle their specific role so effectively, or what kind of unique difficulties they face.
-6. CLOSING CTA: Explicitly express your desire to learn from them with a casual phrase similar to: "I'd love to hear your thoughts so we can exchange knowledge" or "It would be great to learn from your experience." Keep the total message under 3-4 sentences.`,
+2. Write a professional, conversational opening message to ${firstName} at ${company}.
+3. USE THE CONTEXT: Actively analyze their LEAD PROFILE and the CONVERSATION SO FAR. Use your Veda AI Lab LLC knowledge to form a highly intelligent, tailored question or observation about their specific industry/role.
+4. DO NOT pitch your product. Instead, focus on understanding their current environment and sharing a mutual professional interest.
+5. Ask about their organization's approach to technology, or what unique challenges they face in their role.
+6. CLOSING CTA: Explicitly express your desire to learn from them or exchange insights.
+7. LENGTH: Use a maximum of 4-5 sentences and ensure the total length is approximately 7-8 lines. Keep it very easy to read at a glance.`,
 
     share_value:
       `OBJECTIVE: SHARE VALUE
-1. ${firstName} has engaged. Now demonstrate precise expertise.
+1. ${firstName} has engaged. Now demonstrate precise expertise by providing detailed value.
 2. Search the "PROVEN SUCCESS STORIES (ANONYMIZED)" section of the brochure.
-3. Pick the ONE specific result that matches their role/industry the best (e.g., 40% cost reduction in manufacturing, 120 hours per month saved in e-commerce, 65% faster contract reviews in legal).
-4. Present this result in 1 sentence as a concrete proof point.
-5. Ask if this type of outcome would be valuable in their current environment.
-6. Keep it to 2-3 sentences, no fluff.`,
+3. Pick the most relevant results and insights that match their role/industry (e.g., specific cost reductions, hours saved, or efficiency gains).
+4. Present these results as concrete proof points and explain WHY they are relevant to ${firstName}'s profile.
+5. Ask if these types of outcomes align with their current organizational goals.
+6. Provide sufficient detail to be authoritative.
+7. LENGTH: Use a maximum of 4-5 sentences and ensure the total length is approximately 7-8 lines. Keep it very easy to read at a glance.`,
 
     suggest_meeting:
       `OBJECTIVE: SUGGEST MEETING
-1. ${firstName} is interested. Convert interest into a booked call.
+1. ${firstName} is interested. Convert interest into a booked call with a compelling proposal.
 2. Propose a 15-minute discovery call using the "ENGAGEMENT PROCESS" principles: "Free Scoping" and "No Commitment".
-3. Frame it as exploring if there's relevant overlap between their challenges and our delivery capabilities (prototypes in 5 to 7 days).
+3. Frame it as exploring if there's relevant overlap between their specific challenges and our delivery capabilities (prototypes in 5 to 7 days).
 4. Offer specific time options or a Calendly link.
 5. If they are in a highly regulated industry, briefly mention your credentials from the company overview: NDA-first, SOC 2 Type II, HIPAA compliant.
-6. Be confident and direct. 2 sentences maximum.`,
+6. Be confident, professional, and detailed.
+7. LENGTH: Use a maximum of 4-5 sentences and ensure the total length is approximately 7-8 lines. Keep it very easy to read at a glance.`,
 
     book_appointment:
       `OBJECTIVE: BOOK APPOINTMENT
 1. ${firstName} has expressed clear interest. This is the booking close.
 2. Confirm you're sending them a calendar link and ask them to pick a slot.
 3. Express genuine enthusiasm.
-4. Briefly mention that you'll discuss how a pilot can be deployed in 5 to 7 days.
-5. 2 sentences maximum.`,
+4. Briefly mention that you'll discuss how a pilot can be deployed in 5 to 7 days to solve the specific issues discussed.
+5. Provide a clear and detailed path forward.
+6. LENGTH: Use a maximum of 4-5 sentences and ensure the total length is approximately 7-8 lines. Keep it very easy to read at a glance.`,
 
     follow_up_1:
       `OBJECTIVE: GENTLE REMINDER (3 DAYS LATER)
 1. It has been 3 days since your last message with no reply.
-2. Send a gentle, professional bump referencing your previous message.
-3. To showcase expertise and build community, naturally weave in a very brief mention of this success story: "${randomCaseStudy}".
-4. Do NOT copy it word-for-word. Adapt its core outcome to fit a natural conversational flow.
-5. Keep it to 2 short sentences. Do NOT be pushy.`,
+2. Send a professional, value-driven bump referencing your previous message.
+3. To showcase expertise, naturally weave in a brief mention of this success story: "${randomCaseStudy}".
+4. Adapt its core outcome to fit a natural conversational flow and explain why it's a good example for them.
+5. Be detailed but polite.
+6. LENGTH: Use a maximum of 4-5 sentences and ensure the total length is approximately 7-8 lines. Keep it very easy to read at a glance.`,
 
     follow_up_2:
       `OBJECTIVE: SECOND REMINDER (6 DAYS LATER)
 1. It has been 6 days since the first reminder with no reply.
-2. Provide a tiny piece of additional value to reignite interest and foster a community of shared interests.
-3. Integrate a brief insight from this randomly selected case study: "${randomCaseStudy}".
-4. Extract its core metric/outcome and present it seamlessly as a proof point of what's possible.
-5. Ask a low-friction question. Keep it under 3 sentences.`,
+2. Provide an additional piece of value to reignite interest.
+3. Integrate an insight from this randomly selected case study: "${randomCaseStudy}".
+4. Extract its core metric/outcome and present it as a proof point of what's possible for ${company}.
+5. Ask a thoughtful, low-friction question.`,
 
     follow_up_3:
       `OBJECTIVE: FINAL REMINDER (9 DAYS LATER)
 1. This is the final attempt after 9 days.
 2. Gracefully close the loop. Tell them you won't bother them further but remain available if things change.
-3. Leave them with one final brief thought from this case study: "${randomCaseStudy}" to showcase your expertise for the future. Keep it natural and do not copy word-for-word.
-4. Keep it under 3 sentences. Sound professional and polite.`
+3. Leave them with one final brief thought from this case study: "${randomCaseStudy}" to showcase your expertise for the future.
+4. Maintain a high standard of professionalism.`
   };
 
   const urgencyNote = assistantMsgCount >= 4
@@ -170,7 +175,7 @@ STRICT RULES — NEVER VIOLATE THESE:
 Write the exact LinkedIn DM now:`;
 
   const reply = await generateWithOllama(prompt, settings, {
-    maxTokens: 200,
+    maxTokens: 500,
     temperature: 0.72,
     useFallbackModel: false,
   });

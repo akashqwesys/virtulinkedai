@@ -67,6 +67,31 @@ export class CampaignRunner {
       "UPDATE campaigns SET status = 'active', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
     ).run(campaignId);
 
+    // ── Re-enqueue system-level polling jobs if none are currently pending ──
+    // When a campaign is resumed after all campaigns were paused, the system
+    // jobs (CHECK_MESSAGES, CHECK_ENGAGED_REPLIES, etc.) will have been cancelled.
+    // We must re-schedule them here so polling resumes.
+    const systemJobs = [
+      { type: JOB_TYPES.CHECK_ACCEPTANCE, dedupeKey: 'periodic_acceptance_check', delayMs: 2 * 60 * 1000, intervalMinutes: 120 },
+      { type: JOB_TYPES.CHECK_MESSAGES, dedupeKey: 'periodic_message_check', delayMs: 5 * 60 * 1000, intervalMinutes: 30 },
+      { type: JOB_TYPES.CHECK_ENGAGED_REPLIES, dedupeKey: 'periodic_engaged_replies_check', delayMs: 10 * 60 * 1000, intervalMinutes: 120 },
+    ];
+
+    for (const sj of systemJobs) {
+      const existingPending = db.prepare(
+        `SELECT id FROM job_queue WHERE type = ? AND status IN ('pending', 'running') LIMIT 1`
+      ).get(sj.type);
+
+      if (!existingPending) {
+        jobQueue.enqueue(
+          sj.type,
+          { recurringIntervalMinutes: sj.intervalMinutes },
+          { delayMs: sj.delayMs, maxAttempts: 2, dedupeKey: sj.dedupeKey },
+        );
+        console.log(`[Orchestrator] Campaign resumed — re-enqueued ${sj.type}.`);
+      }
+    }
+
     logActivity("campaign_started", "campaign", {
       campaignId,
     });
@@ -85,11 +110,11 @@ export class CampaignRunner {
     // ── Signal any in-flight importFromSearchUrl loops to stop ────────────
     abortCampaignImport(campaignId);
 
-    // ── Hard-cancel ALL pending & running jobs for this campaign's leads ──
-    // This is the critical step: without this, recovered/pending jobs will
-    // continue to fire even though the campaign is paused.
-    const leads = db.prepare("SELECT id FROM leads WHERE campaign_id = ?").all(campaignId) as any[];
     let cancelledCount = 0;
+
+    // ── Hard-cancel ALL pending & running jobs for this campaign's leads ──
+    // Cancel by leadId (covers SCRAPE_PROFILE, SEND_CONNECTION, CHECK_LEAD_THREAD, etc.)
+    const leads = db.prepare("SELECT id FROM leads WHERE campaign_id = ?").all(campaignId) as any[];
     for (const lead of leads) {
       const result = db.prepare(
         `UPDATE job_queue SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -98,13 +123,35 @@ export class CampaignRunner {
       cancelledCount += result.changes;
     }
 
-    // Also cancel any campaign-level jobs (CHECK_ACCEPTANCE, CHECK_MESSAGES)
-    // that reference this campaignId in their payload
+    // ── Cancel campaign-level jobs that reference this campaignId in their payload ──
     const campaignJobResult = db.prepare(
       `UPDATE job_queue SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE status IN ('pending', 'running') AND json_extract(payload, '$.campaignId') = ?`
     ).run(campaignId);
     cancelledCount += campaignJobResult.changes;
+
+    // ── If NO campaigns remain active, cancel all system-level recurring jobs too ──
+    // System jobs (CHECK_MESSAGES, CHECK_ENGAGEMENT_REPLIES, CHECK_ACCEPTANCE,
+    // CHECK_DM_FOLLOWUPS) have no campaignId in payload, so they survive the
+    // above sweeps. When all campaigns are paused these jobs serve no purpose.
+    const anyActiveCampaign = db.prepare("SELECT id FROM campaigns WHERE status = 'active' LIMIT 1").get();
+    if (!anyActiveCampaign) {
+      const systemJobTypes = [
+        'CHECK_MESSAGES',
+        'CHECK_ENGAGED_REPLIES',
+        'CHECK_ACCEPTANCE',
+        'CHECK_DM_FOLLOWUPS',
+        'CHECK_LEAD_THREAD',
+      ];
+      for (const jobType of systemJobTypes) {
+        const r = db.prepare(
+          `UPDATE job_queue SET status = 'cancelled', completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+           WHERE status IN ('pending', 'running') AND type = ?`
+        ).run(jobType);
+        cancelledCount += r.changes;
+      }
+      console.log(`[Orchestrator] No active campaigns remain — cancelled all system-level polling jobs.`);
+    }
 
     console.log(`[Orchestrator] Campaign ${campaignId} paused. Cancelled ${cancelledCount} pending/running job(s).`);
     logActivity("campaign_paused", "campaign", { campaignId, cancelledJobs: cancelledCount });

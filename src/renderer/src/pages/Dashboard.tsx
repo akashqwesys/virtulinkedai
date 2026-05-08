@@ -101,6 +101,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     online: boolean;
     models: string[];
   }>({ online: false, models: [] });
+  const [settings, setSettings] = useState<any>(null);
   const [emailStatus, setEmailStatus] = useState<{
     authenticated: boolean;
     email: string | null;
@@ -115,6 +116,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     checkAIStatus();
     checkEmailStatus();
     loadActivities();
+    loadSettings();
   }, []);
 
   async function checkEmailStatus() {
@@ -166,6 +168,15 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       setAiStatus(status);
     } catch (e) {
       setAiStatus({ online: false, models: [] });
+    }
+  }
+
+  async function loadSettings() {
+    try {
+      const s = await window.api.settings.get();
+      setSettings(s);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -386,38 +397,39 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <div
               className="stat-icon"
               style={{
-                background: "rgba(139, 92, 246, 0.15)",
-                color: "#8b5cf6",
+                background: "var(--accent-primary-glow)",
+                color: "var(--accent-primary)",
               }}
             >
               <Bot size={20} />
             </div>
-            <div className="stat-label">AI Engine (Ollama)</div>
+            <div className="stat-label">NVIDIA API</div>
             <div
               className="stat-value"
               style={{
                 fontSize: "1.125rem",
                 background: "none",
-                WebkitTextFillColor: aiStatus.online ? "var(--accent-success)" : "var(--accent-danger)",
+                WebkitTextFillColor: settings?.ai?.nvidiaApiKey ? "var(--accent-success)" : "var(--accent-danger)",
               }}
             >
-              {aiStatus.online ? "Online" : "Offline"}
+              {settings?.ai?.nvidiaApiKey ? "Provided" : "Required"}
             </div>
-            {aiStatus.models.length > 0 && (
-              <div
-                className="stat-change positive"
-                style={{ textTransform: "none", letterSpacing: "normal" }}
-              >
-                {aiStatus.models.length} model
-                {aiStatus.models.length > 1 ? "s" : ""} available
-              </div>
-            )}
+            <div
+              className="stat-change"
+              style={{ 
+                textTransform: "none", 
+                letterSpacing: "normal",
+                color: "var(--text-muted)"
+              }}
+            >
+              {settings?.ai?.primaryModel || "NVIDIA NIM"}
+            </div>
             <button
               className="btn btn-secondary btn-sm"
               style={{ marginTop: "12px", width: "100%" }}
-              onClick={checkAIStatus}
+              onClick={() => onNavigate?.("settings")}
             >
-              <RefreshCw size={14} /> Refresh Status
+              <SettingsIcon size={14} /> Configure API
             </button>
           </div>
 
@@ -470,8 +482,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <div
               className="stat-icon"
               style={{
-                background: "rgba(59, 130, 246, 0.15)",
-                color: "#3b82f6",
+                background: "rgba(0, 122, 255, 0.1)",
+                color: "var(--accent-primary)",
               }}
             >
               <Globe size={20} />
@@ -545,7 +557,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             </button>
             <button
               className="btn btn-secondary"
-              disabled={!aiStatus.online}
+              disabled={!settings?.ai?.nvidiaApiKey && !aiStatus.online}
               onClick={() => onNavigate?.("content")}
             >
               <Bot size={16} /> Generate Content
@@ -624,7 +636,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         </div>
 
         {/* Danger Zone */}
-        <div className="card" style={{ marginTop: "40px", border: "1px solid var(--accent-danger-subtle)", background: "rgba(239, 68, 68, 0.02)" }}>
+        <div className="card" style={{ marginTop: "40px", border: "1px solid var(--accent-danger-subtle)", background: "rgba(255, 59, 48, 0.1)" }}>
           <div className="card-header">
             <h3 className="card-title" style={{ color: "var(--accent-danger)" }}><AlertTriangle size={18} /> Danger Zone</h3>
           </div>

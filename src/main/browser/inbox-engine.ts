@@ -89,7 +89,11 @@ export async function getInboxPage(): Promise<Page> {
   // Fast path: if browser + page are alive, return immediately
   if (_inboxBrowser && _inboxPage) {
     try {
-      await _inboxBrowser.pages(); // lightweight health check
+      const pages = await _inboxBrowser.pages(); // lightweight health check
+      if (_inboxPage.isClosed()) {
+        console.log("[InboxEngine] _inboxPage was closed, grabbing a new one.");
+        _inboxPage = pages.length > 0 ? pages[0] : await _inboxBrowser.newPage();
+      }
       return _inboxPage;
     } catch {
       // Stale reference (user closed Chrome) — fall through to relaunch
@@ -164,9 +168,9 @@ async function _doLaunch(): Promise<Page> {
 
     // Navigate to LinkedIn messaging to start
     await _inboxPage.goto("https://www.linkedin.com/messaging/", {
-      waitUntil: "networkidle2",
-      timeout: 45000,
-    });
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    }).catch(() => null);
 
     _status = "running";
 
@@ -193,6 +197,26 @@ async function _doLaunch(): Promise<Page> {
     console.error("[InboxEngine] Launch failed:", msg);
     throw error;
   }
+}
+
+/**
+ * Open a NEW TAB inside the existing inbox browser (same Chrome window).
+ * Stealth measures are applied. Caller must close the page when done.
+ *
+ * This lets InMail automation run in a dedicated tab without
+ * navigating away from the inbox messaging tab.
+ */
+export async function createInboxTab(): Promise<Page> {
+  // Ensure the inbox browser is running first
+  await getInboxPage();
+
+  if (!_inboxBrowser) {
+    throw new Error("Inbox browser is not running. Please launch it from the Inbox tab first.");
+  }
+
+  const newPage = await _inboxBrowser.newPage();
+  await applyInboxStealth(newPage);
+  return newPage;
 }
 
 /**
@@ -226,3 +250,81 @@ export async function closeInboxBrowser(): Promise<void> {
     logActivity("inbox_browser_closed", "inbox");
   }
 }
+
+/**
+ * Logout from the inbox browser by navigating to the LinkedIn logout URL,
+ * clearing all cookies, and wiping session files from the Chrome profile directory.
+ *
+ * After this call:
+ *   - The inbox browser is closed
+ *   - All LinkedIn session cookies are gone from the profile
+ *   - The next time the inbox browser is launched it has NO prior login state
+ */
+export async function inboxLogout(): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log("[InboxEngine] Logging out from inbox browser...");
+
+    if (_inboxBrowser && _inboxPage) {
+      try {
+        // 1. Navigate to LinkedIn logout URL to invalidate the server-side session
+        await _inboxPage.goto("https://www.linkedin.com/m/logout/", {
+          waitUntil: "domcontentloaded",
+          timeout: 20000,
+        });
+      } catch {
+        // Page may fail to load after logout — safe to continue
+      }
+
+      try {
+        // 2. Clear cookies via CDP (belt-and-suspenders)
+        const client = await _inboxPage.createCDPSession();
+        await client.send("Network.clearBrowserCookies");
+        await client.send("Network.clearBrowserCache");
+      } catch {
+        // CDP session may fail on some OS/Chrome combos — non-fatal
+      }
+
+      // 3. Close the browser
+      await closeInboxBrowser();
+    }
+
+    // 4. Wipe session-sensitive files from the Chrome profile directory so that
+    //    the NEXT launch starts with zero LinkedIn account state.
+    const profileDir = getInboxUserDataDir();
+    const sessionDirs = [
+      "Default/Cookies",
+      "Default/Login Data",
+      "Default/Session Storage",
+      "Default/Local Storage",
+      "Default/IndexedDB",
+      "Default/Extension State",
+    ];
+
+    for (const rel of sessionDirs) {
+      const target = path.join(profileDir, rel);
+      try {
+        if (fs.existsSync(target)) {
+          const stat = fs.statSync(target);
+          if (stat.isDirectory()) {
+            fs.rmSync(target, { recursive: true, force: true });
+          } else {
+            fs.unlinkSync(target);
+          }
+          console.log(`[InboxEngine] Cleared session artifact: ${rel}`);
+        }
+      } catch (e) {
+        console.warn(`[InboxEngine] Could not clear ${rel}:`, e);
+      }
+    }
+
+    logActivity("inbox_logout_complete", "inbox", { profileDir });
+    console.log("[InboxEngine] Inbox logout complete — browser profile session data wiped.");
+
+    return { success: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error("[InboxEngine] Logout failed:", msg);
+    return { success: false, error: msg };
+  }
+}
+

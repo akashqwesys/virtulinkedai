@@ -72,9 +72,6 @@ export async function generateWithOllama(
     ].join("\n");
   }
 
-  console.log("=== [AI CLIENT] FINAL PROMPT SENT TO MODEL ===");
-  console.log(finalPrompt);
-  console.log("==============================================");
 
   try {
     if (settings.provider === "nvidia") {

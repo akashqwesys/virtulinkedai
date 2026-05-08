@@ -12,6 +12,7 @@ export { generateConnectionNote } from "./mixtral/noteGenerator";
 export { generatePersonalizedEmail } from "./mixtral/emailGenerator";
 export { generateChatbotReply } from "./mixtral/chatbotGenerator";
 export { generatePostComment } from "./mixtral/commentGenerator";
+export { generateInMail } from "./mixtral/inmailGenerator";
 export { analyzeSentiment } from "./mixtral/sentimentAnalyzer";
 export { parseProfileJson } from "./mixtral/jsonParser";
 
@@ -23,6 +24,13 @@ export async function checkAIStatus(settings: AppSettings["ai"]): Promise<{
   models: string[];
   error?: string;
 }> {
+  if (settings.provider === "nvidia") {
+    return {
+      online: !!settings.nvidiaApiKey,
+      models: settings.nvidiaApiKey ? [settings.primaryModel] : [],
+    };
+  }
+
   try {
     const response = await fetch(
       `${settings.ollamaBaseUrl}:${settings.ollamaApiPort}/api/tags`,
