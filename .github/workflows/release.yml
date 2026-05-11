@@ -1,4 +1,4 @@
-name: Release - Multi-Platform
+name: Build & Release
 
 on:
   push:
@@ -9,9 +9,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
-    name: Build and Release (${{ matrix.os }})
+  build:
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
@@ -29,31 +30,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Electron app
-        run: npx electron-vite build
+      - name: Build Electron App
+        run: npm run build:${{ matrix.os == 'windows-latest' && 'win' || 'mac' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Package for ${{ matrix.os }}
-        run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            npx electron-builder --win --publish never
-          else
-            npx electron-builder --mac --publish never
-          fi
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifacts
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: VirtuLinkedAI-${{ matrix.os }}
           path: |
             dist/*.exe
             dist/*.dmg
-            dist/*.zip
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -62,7 +51,6 @@ jobs:
           files: |
             dist/*.exe
             dist/*.dmg
-            dist/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

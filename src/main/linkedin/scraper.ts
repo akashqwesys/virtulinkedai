@@ -21,7 +21,7 @@ import type {
   Education,
   Post,
 } from "../../shared/types";
-import { getPage, setBrowserLocked, waitForBrowserLock } from "../browser/engine";
+import { getPage } from "../browser/engine";
 import {
   humanClick,
   humanDelay,
@@ -1464,8 +1464,9 @@ export async function importFromSearchUrl(
   const page = getPage();
   if (!page) throw new Error("Browser not launched");
 
-  await waitForBrowserLock();
-  setBrowserLocked(true);
+  // NOTE: The browser lock is managed by the *caller* (jobQueue.poll or direct IPC).
+  // Do NOT acquire it here — that causes a reentrant deadlock when called from inside
+  // a job handler (the queue already holds the lock). See jobQueue.ts lines 268-273.
 
   const results: Array<{
     name: string;
@@ -1771,8 +1772,6 @@ export async function importFromSearchUrl(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     logActivity("search_import_failed", "linkedin", { error: message }, "error", message);
-  } finally {
-    setBrowserLocked(false);
   }
 
   return results;
