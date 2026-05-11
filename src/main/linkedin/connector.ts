@@ -1,7 +1,7 @@
 /**
  * LinkedIn Connection Request Manager
  *
- * Sends connection requests with AI-personalized notes via Mixtral 8x7B.
+ * Sends connection requests with AI-personalized notes via NVIDIA API.
  * Full flow: find connect button → click connect → click "Add a note" → type AI note → send.
  *
  * Safety features:

@@ -120,6 +120,7 @@ function initializeSchema(db: any): void {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         description TEXT DEFAULT '',
+        search_url TEXT DEFAULT '',
         status TEXT DEFAULT 'draft',
         steps_json TEXT DEFAULT '[]',
         stats_json TEXT DEFAULT '{}',
@@ -325,6 +326,13 @@ function initializeSchema(db: any): void {
   // Execute table creations individually for reliability
   for (const table of tables) {
     db.exec(table.sql);
+  }
+
+  // Auto-migration: ensure search_url exists on existing campaigns tables
+  try {
+    db.prepare("ALTER TABLE campaigns ADD COLUMN search_url TEXT DEFAULT ''").run();
+  } catch (err) {
+    // Ignore if it already exists
   }
 
   // 2. Migration: Ensure important columns exist (auto-healing for existing DBs)

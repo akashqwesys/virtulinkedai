@@ -12,6 +12,7 @@ import { jobQueue } from "./jobQueue";
 import { JOB_TYPES } from "./jobs";
 import type {
   ScrapeProfilePayload,
+  RunSearchImportPayload,
   SendConnectionPayload,
   CheckAcceptancePayload,
   SendWelcomeDmPayload,
@@ -211,6 +212,38 @@ function enforceAnyActiveCampaign(): void {
     throw new Error("Job paused: Campaign is paused — no active campaigns.");
   }
 }
+
+// ============================================================
+// Handler: Run Search Import
+// ============================================================
+
+jobQueue.process<RunSearchImportPayload>(
+  JOB_TYPES.RUN_SEARCH_IMPORT,
+  async (job: Job<RunSearchImportPayload>) => {
+    enforceWorkingHours();
+    await ensureBrowserRunning();
+
+    const { leadId, searchUrl, campaignId } = job.payload;
+    enforceCampaignActive(campaignId);
+
+    if (!_limitManager) throw new Error("Daily limit manager not initialized");
+
+    const db = getDatabase();
+    
+    const { importFromSearchUrl } = await import("../linkedin/scraper");
+
+    await importFromSearchUrl(searchUrl, 50, {
+      settings: _settings,
+      limitManager: _limitManager,
+      campaignId: campaignId,
+    });
+    
+    // We intentionally DO NOT update the lead status to 'profile_scraped'.
+    // Leaving it as 'queued' ensures the pipeline runner will re-enqueue 
+    // the RUN_SEARCH_IMPORT job repeatedly until daily limits are reached,
+    // creating a continuous "always on" scraping mechanism.
+  }
+);
 
 // ============================================================
 // Handler: Scrape Profile

@@ -7,6 +7,7 @@ import ContentCalendar from "./pages/ContentCalendar";
 import Inbox from "./pages/Inbox";
 import Analytics from "./pages/Analytics";
 import InMail from "./pages/InMail";
+import Meetings from "./pages/Meetings";
 import {
   LayoutDashboard,
   Rocket,
@@ -27,6 +28,7 @@ type PageKey =
   | "content"
   | "inbox"
   | "inmail"
+  | "meetings"
   | "analytics"
   | "settings";
 
@@ -43,6 +45,7 @@ const navItems: NavItem[] = [
   { key: "leads", label: "Lead Pipeline", icon: <Users size={18} /> },
   { key: "inbox", label: "Inbox", icon: <MessageSquare size={18} /> },
   { key: "inmail", label: "Direct InMail", icon: <Mail size={18} /> },
+  { key: "meetings", label: "Meetings", icon: <Calendar size={18} /> },
   { key: "content", label: "Content Calendar", icon: <Calendar size={18} />, section: "Content" },
   { key: "analytics", label: "Analytics", icon: <LineChart size={18} /> },
   { key: "settings", label: "Settings", icon: <SettingsIcon size={18} />, section: "System" },
@@ -110,6 +113,8 @@ export default function App() {
         return <Inbox />;
       case "inmail":
         return <InMail />;
+      case "meetings":
+        return <Meetings />;
       case "analytics":
         return <Analytics />;
       case "settings":
@@ -126,7 +131,7 @@ export default function App() {
               gap: "16px",
             }}
           >
-            <div style={{ fontSize: "48px" }}>🚧</div>
+            <div style={{ fontSize: "49px" }}>🚧</div>
             <h2>Coming Soon</h2>
             <p className="text-muted">This module is under development</p>
           </div>

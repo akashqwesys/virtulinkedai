@@ -67,6 +67,18 @@ export class CampaignRunner {
       "UPDATE campaigns SET status = 'active', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
     ).run(campaignId);
 
+    // ── Auto-Heal: Migrate old search URLs from leads table to campaigns table ──
+    try {
+      const existingSearchUrl = db.prepare(`SELECT linkedin_url FROM leads WHERE campaign_id = ? AND (linkedin_url LIKE '%/search/%' OR linkedin_url LIKE '%/sales/search/%') LIMIT 1`).get(campaignId) as any;
+      if (existingSearchUrl && (!campaign.search_url || campaign.search_url === '')) {
+        db.prepare(`UPDATE campaigns SET search_url = ? WHERE id = ?`).run(existingSearchUrl.linkedin_url, campaignId);
+        db.prepare(`DELETE FROM leads WHERE linkedin_url = ? AND campaign_id = ?`).run(existingSearchUrl.linkedin_url, campaignId);
+        console.log(`[Orchestrator] Healed legacy search URL for campaign ${campaignId}`);
+      }
+    } catch (e) {
+      console.warn('[Orchestrator] Failed to auto-heal search URL', e);
+    }
+
     // ── Re-enqueue system-level polling jobs if none are currently pending ──
     // When a campaign is resumed after all campaigns were paused, the system
     // jobs (CHECK_MESSAGES, CHECK_ENGAGED_REPLIES, etc.) will have been cancelled.
@@ -163,15 +175,27 @@ export class CampaignRunner {
   registerCampaign(campaign: Campaign, leadUrls: string[]): string {
     const db = getDatabase();
 
+    let searchUrl = "";
+    const normalLeadUrls: string[] = [];
+    
+    for (const url of leadUrls) {
+      if (url.includes('/search/') || url.includes('/sales/search/')) {
+        searchUrl = url;
+      } else {
+        normalLeadUrls.push(url);
+      }
+    }
+
     db.prepare(
       `
-          INSERT OR REPLACE INTO campaigns (id, name, description, status, steps_json, stats_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO campaigns (id, name, description, search_url, status, steps_json, stats_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
     ).run(
       campaign.id,
       campaign.name,
       campaign.description || "",
+      searchUrl,
       "draft",
       JSON.stringify(campaign.steps || []),
       JSON.stringify(campaign.stats || {}),
@@ -190,7 +214,7 @@ export class CampaignRunner {
         `);
 
     db.transaction(() => {
-      for (const url of leadUrls) {
+      for (const url of normalLeadUrls) {
         const leadId = uuid();
         insertLead.run(leadId, campaign.id, url);
         insertHistory.run(

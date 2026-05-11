@@ -50,12 +50,13 @@ ${contextBlock}
 Your task is to write a LinkedIn InMail (Subject + Body) to this lead. An InMail is used to message someone you are NOT connected with.
 
 STRATEGY & ALGORITHM:
-1. SUBJECT LINE: Must be catchy, concise (under 50 characters), and highly relevant to their specific profile or the objective.
+1. SUBJECT LINE: Must be catchy, concise (under 50 characters), and focused on networking/connecting.
 2. OPENING: Express that their LinkedIn profile genuinely impressed you. Reference SPECIFIC details from their profile (role, company, achievements) to show you've paid close attention.
-3. VALUE / CURIOSITY: The dominant tone should be curiosity or a specific value proposition related to the objective. Use the provided VEDA knowledge invisibly as a framework to formulate an intelligent, thoughtful point — but do not make it a hard sell.
-4. CALL TO ACTION: End with a soft call to action (e.g., a quick chat, exchanging thoughts, or simply connecting).
-5. LENGTH: Your response MUST be concise. Use a maximum of 4-5 sentences and ensure the total length is approximately 7-8 lines. Keep it very easy to read at a glance.
-6. FORMAT: 
+3. RELATIONSHIP FIRST (NO SELLING): The dominant tone must be purely for networking and mutual connection. UNDER NO CIRCUMSTANCES should you pitch a product, offer a service, or ask for a sales call.
+4. AI CONTEXT: Introduce yourself as someone in the AI space (Veda AI Lab) who loves connecting with forward-thinking professionals. Use the VEDA knowledge invisibly to establish common ground, not to sell.
+5. CALL TO ACTION: End with a polite request to connect and share insights. Do not ask for a meeting.
+6. LENGTH: Your response MUST be concise. Use a maximum of 3-4 sentences and ensure the total length is approximately 6-7 lines. Keep it very easy to read at a glance.
+7. FORMAT: 
    - LinkedIn InMails should be punchy and readable. Use short paragraphs.
    - Do NOT include placeholders like [Your Name]. Use the sender identity provided.
 

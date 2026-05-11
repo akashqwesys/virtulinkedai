@@ -2,8 +2,9 @@ import type { AppSettings, LinkedInProfile } from "../../../shared/types";
 import { generateWithOllama } from "./client";
 
 /**
- * Extracts profile information from raw DOM text and outputs structured JSON
- * leveraging the remote Mixtral model instance configured safely via settings.
+ * Semantic Profile Parsing
+ * Parses unstructured LinkedIn profile text into structured JSON,
+ * leveraging the remote NVIDIA API model instance configured safely via settings.
  */
 export async function parseProfileJson(
   rawText: string,
@@ -35,7 +36,7 @@ ${rawText}
 
 OUTPUT (valid JSON only):`;
 
-  console.log(`[AI/JSON] Requesting JSON parsing from Mixtral (${settings.primaryModel}) - text size: ${rawText.length}`);
+  console.log(`[AI/JSON] Requesting JSON parsing from NVIDIA API (${settings.primaryModel}) - text size: ${rawText.length}`);
   
   // Give up to 10 tries — sparse profiles need more attempts for the LLM to stabilize.
   const maxRetries = 10;

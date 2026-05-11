@@ -105,13 +105,13 @@ export default function ActivityLogTerminal({
             animation: "pulse 2s infinite"
           }} />
           <Terminal size={14} style={{ color: "var(--text-muted)" }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "0.5px" }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "0.5px" }}>
             {title}
           </span>
           {!autoScroll && (
             <button 
               onClick={() => { setAutoScroll(true); if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }}
-              style={{ background: "transparent", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: 10, padding: "2px 8px", borderRadius: 4, cursor: "pointer", marginLeft: 8 }}
+              style={{ background: "transparent", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: 11, padding: "2px 8px", borderRadius: 4, cursor: "pointer", marginLeft: 8 }}
             >
               Resume Scroll
             </button>
@@ -123,7 +123,7 @@ export default function ActivityLogTerminal({
             style={{
               background: "none", border: "none", color: "var(--text-muted)",
               cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-              fontSize: 11, transition: "color 0.2s"
+              fontSize: 12, transition: "color 0.2s"
             }}
             onMouseEnter={e => e.currentTarget.style.color = "var(--text-primary)"}
             onMouseLeave={e => e.currentTarget.style.color = "var(--text-muted)"}
@@ -146,7 +146,7 @@ export default function ActivityLogTerminal({
         style={{
           flex: 1, overflowY: "auto", padding: "12px 16px",
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          fontSize: 11, color: "var(--text-muted)",
+          fontSize: 12, color: "var(--text-muted)",
           display: "flex", flexDirection: "column", gap: 6,
           lineHeight: 1.5
         }}

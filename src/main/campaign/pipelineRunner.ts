@@ -111,26 +111,7 @@ class PipelineRunner {
       return false;
     }
 
-    // Look for ONE lead in 'queued' or 'new'
-    const queuedLead = db.prepare(`SELECT id, linkedin_url FROM leads WHERE campaign_id = ? AND status IN ('queued', 'new') LIMIT 1`).get(campaignId) as any;
-    
-    if (queuedLead) {
-      const pendingJobsCount = (db.prepare(`SELECT COUNT(*) AS cnt FROM job_queue WHERE type = ? AND status IN ('pending', 'running') AND payload LIKE ?`).get(JOB_TYPES.SCRAPE_PROFILE, `%${queuedLead.id}%`) as any).cnt;
-      if (pendingJobsCount === 0) {
-        jobQueue.enqueue(
-          JOB_TYPES.SCRAPE_PROFILE,
-          {
-            leadId: queuedLead.id,
-            linkedinUrl: queuedLead.linkedin_url,
-            campaignId: campaignId,
-          },
-          { priority: 10 } // High priority since it's the tip of the spear
-        );
-      }
-      return true;
-    }
-
-    // If no raw queued leads, check if there are any scraped leads waiting for connection sending
+    // First priority: check if there are any scraped leads waiting for connection sending (stranded leads)
     const strandedLead = db.prepare(`SELECT id, linkedin_url FROM leads WHERE campaign_id = ? AND status = 'profile_scraped' LIMIT 1`).get(campaignId) as any;
     if (strandedLead) {
       // Fast check if it already has a pending SEND_CONNECTION job
@@ -144,7 +125,38 @@ class PipelineRunner {
             linkedinUrl: strandedLead.linkedin_url,
             campaignId: campaignId,
           },
-          { priority: 9 }
+          { priority: 11 } // Higher priority than scraping new leads
+        );
+      }
+      return true;
+    }
+
+    // Second priority: Look for a campaign search URL
+    const campaignInfo = db.prepare(`SELECT search_url FROM campaigns WHERE id = ?`).get(campaignId) as any;
+    if (campaignInfo && campaignInfo.search_url) {
+      // Check if a search import job is already queued for this campaign
+      const pendingJobsCount = (db.prepare(`SELECT COUNT(*) AS cnt FROM job_queue WHERE type = ? AND status IN ('pending', 'running') AND json_extract(payload, '$.campaignId') = ?`).get(JOB_TYPES.RUN_SEARCH_IMPORT, campaignId) as any).cnt;
+      
+      if (pendingJobsCount === 0) {
+        jobQueue.enqueue(
+          JOB_TYPES.RUN_SEARCH_IMPORT,
+          { leadId: `search-${campaignId}`, searchUrl: campaignInfo.search_url, campaignId: campaignId },
+          { priority: 10 }
+        );
+      }
+      return true; // We have a search URL, stay in the queue section until limits hit
+    }
+
+    // Third priority: Look for ONE individual lead in 'queued' or 'new'
+    const queuedLead = db.prepare(`SELECT id, linkedin_url FROM leads WHERE campaign_id = ? AND status IN ('queued', 'new') LIMIT 1`).get(campaignId) as any;
+    
+    if (queuedLead) {
+      const pendingJobsCount = (db.prepare(`SELECT COUNT(*) AS cnt FROM job_queue WHERE type = ? AND status IN ('pending', 'running') AND payload LIKE ?`).get(JOB_TYPES.SCRAPE_PROFILE, `%${queuedLead.id}%`) as any).cnt;
+      if (pendingJobsCount === 0) {
+        jobQueue.enqueue(
+          JOB_TYPES.SCRAPE_PROFILE,
+          { leadId: queuedLead.id, linkedinUrl: queuedLead.linkedin_url, campaignId: campaignId },
+          { priority: 10 } // High priority since it's the tip of the spear
         );
       }
       return true;

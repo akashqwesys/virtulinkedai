@@ -2,7 +2,7 @@
  * AI Personalization Engine
  *
  * Re-exports the task-specific AI modules operating against
- * the remote Mixtral 8x7B endpoint.
+ * the remote NVIDIA API endpoint.
  */
 
 import type { AppSettings } from "../../shared/types";

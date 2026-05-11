@@ -681,6 +681,10 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
         updatedAt: new Date().toISOString(),
       };
       const id = runner.registerCampaign(campaign, data.leadUrls);
+      
+      // Auto-start campaign upon creation per user request
+      await runner.startCampaign(id);
+      
       return { success: true, campaignId: id };
     },
   );
@@ -1015,8 +1019,7 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // ---- Campaign Import From Page (AI bulk scraper + human-mimicry outreach) ----
   ipcMain.removeHandler(IPC_CHANNELS.CAMPAIGN_IMPORT_FROM_PAGE);
-  ipcMain.handle(
-    IPC_CHANNELS.CAMPAIGN_IMPORT_FROM_PAGE,
+  ipcMain.handle(IPC_CHANNELS.CAMPAIGN_IMPORT_FROM_PAGE,
     async (_event, data: { campaignId: string; pageUrl: string }) => {
       try {
         const db = getDatabase();
@@ -1026,129 +1029,30 @@ function setupIpcHandlers(mainWindow: BrowserWindow): void {
         if (!campaignCheck) {
           return { success: false, error: "Campaign not found." };
         }
-        if (campaignCheck.status !== "active") {
-          return { success: false, error: "Campaign is paused. Resume the campaign before importing leads." };
-        }
+        
+        // Native persistence approach:
+        // Instead of manually blocking the main process and scraping right here,
+        // we just save the URL natively to the campaign. The pipeline runner will see it
+        // and spin up a persistent RUN_SEARCH_IMPORT job that survives app restarts.
+        db.prepare(`UPDATE campaigns SET search_url = ? WHERE id = ?`).run(data.pageUrl, data.campaignId);
 
-        const settings = getSettingsStore().get("settings");
-
-        // Initialize limitManager for outreach (same pattern as autopilot handler)
-        if (!limitManager) {
-          limitManager = new DailyLimitManager(
-            {
-              connectionRequests: settings.dailyLimits.connectionRequests,
-              profileViews: settings.dailyLimits.profileViews,
-              messages: settings.dailyLimits.messages,
-              postEngagements: settings.dailyLimits.postEngagements,
-            },
-            settings.dailyLimits.randomizePercent,
-          );
-        }
-
-        // Ensure browser is running
-        const browserStatus = getBrowserStatus();
-        if (browserStatus.status !== "running") {
-          await launchBrowser();
-        }
-
-        // Track what the AI actually visits (inserted one-by-one via callback)
-        let added = 0;
-        let duplicates = 0;
-
-        // Pre-load existing URLs for deduplication
-        const existingLeads = db.prepare("SELECT linkedin_url FROM leads WHERE campaign_id = ?").all(data.campaignId) as any[];
-        const existingUrls = new Set(existingLeads.map((l: any) => (l.linkedin_url || "").toLowerCase().trim()));
-
-        const insertLead = db.prepare(`
-          INSERT OR IGNORE INTO leads (id, campaign_id, linkedin_url, first_name, last_name, headline, company, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-        `);
-
-        const campaign = db.prepare("SELECT status FROM campaigns WHERE id = ?").get(data.campaignId) as any;
-        const isActive = campaign?.status === "active";
-
-        // ── Profile-by-profile callback ────────────────────────────────────────
-        // This fires IMMEDIATELY after the AI clicks and scrapes each profile.
-        // Only profiles the AI actually visits get added to the queue.
-        const onProfileScraped = (profile: {
-          name: string;
-          title: string;
-          company: string;
-          location: string;
-          profileUrl: string;
-        }) => {
-          const url = (profile.profileUrl || "").trim();
-          if (!url || !url.includes("linkedin.com")) return;
-
-          const urlKey = url.toLowerCase();
-          if (existingUrls.has(urlKey)) {
-            duplicates++;
-            return;
-          }
-
-          const nameParts = (profile.name || "").trim().split(" ");
-          const firstName = nameParts[0] || "";
-          const lastName = nameParts.slice(1).join(" ") || "";
-          const id = uuidv4();
-
-          const result = insertLead.run(
-            id,
-            data.campaignId,
-            url,
-            firstName,
-            lastName,
-            profile.title || "",
-            profile.company || "",
-          );
-
-          if (result.changes > 0) {
-            added++;
-            existingUrls.add(urlKey);
-            console.log(`[CampaignImport] ✅ Profile added to queue: "${profile.name}" → ${url} (total: ${added})`);
-
-            // Enqueue a scrape job for active campaigns immediately
-            if (isActive) {
-              jobQueue.enqueue<ScrapeProfilePayload>(
-                JOB_TYPES.SCRAPE_PROFILE,
-                { leadId: id, linkedinUrl: url, campaignId: data.campaignId },
-                { delayMs: 0 }
-              );
-            }
-
-            logActivity("lead_queued_from_import", "campaign", {
-              campaignId: data.campaignId,
-              name: profile.name,
-              url,
-            });
-          } else {
-            duplicates++;
-          }
-        };
-
-        // Run the AI import — profiles added one-by-one via onProfileScraped callback
-        const scrapedProfiles = await importFromSearchUrl(data.pageUrl, 100, {
-          settings,
-          limitManager,
-          campaignId: data.campaignId,
-          onProfileScraped,
-        });
-
-        if (!scrapedProfiles || scrapedProfiles.length === 0) {
-          return { success: false, error: "No profiles found on page. Make sure you are logged in and the URL is a valid LinkedIn listing page (search results, company people, or alumni page)." };
-        }
-
-        logActivity("campaign_page_import", "campaign", {
+        console.log(`[CampaignImport] Native persistent Search URL saved for campaign ${data.campaignId}`);
+        logActivity("campaign_search_url_assigned", "campaign", {
           campaignId: data.campaignId,
           pageUrl: data.pageUrl,
-          scrapedTotal: scrapedProfiles.length,
-          addedToQueue: added,
-          duplicates,
         });
 
-        return { success: true, added, duplicates, total: scrapedProfiles.length };
+        return {
+          success: true,
+          added: 0,
+          duplicates: 0,
+          totalScraped: 0,
+          message: "Search campaign successfully registered. The AI will begin continuous scraping in the background."
+        };
+
       } catch (err: any) {
-        console.error("Campaign page import failed:", err);
-        return { success: false, error: err?.message || "Import failed. Make sure browser is running and you are logged into LinkedIn." };
+        console.error("Failed to set campaign search URL:", err);
+        return { success: false, error: err.message };
       }
     },
   );

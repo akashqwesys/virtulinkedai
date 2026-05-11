@@ -73,7 +73,7 @@ export default function InMail() {
   const [errorMessage, setErrorMessage] = useState("");
   const [resultType, setResultType] = useState<"dm" | "inmail" | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
 
   // History state
   const [history, setHistory] = useState<InMailRecord[]>([]);
@@ -92,8 +92,8 @@ export default function InMail() {
   }, []);
 
   useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [logs]);
 
@@ -204,10 +204,10 @@ export default function InMail() {
       }}>
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <h1 style={{ fontSize: 21, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <Zap size={20} style={{ color: "var(--accent-primary)" }} /> Direct InMail
           </h1>
-          <p style={{ color: textMuted, fontSize: 13 }}>
+          <p style={{ color: textMuted, fontSize: 14 }}>
             AI-personalized InMail or DM — automatically detects the right channel.
           </p>
         </div>
@@ -218,12 +218,12 @@ export default function InMail() {
           borderRadius: "var(--radius-lg)", padding: 20, marginBottom: 16
         }}>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 6, color: "var(--text-muted)" }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "var(--text-muted)" }}>
               LinkedIn Profile URL *
             </label>
             <input
               className="input"
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, fontSize: 13,
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, fontSize: 14,
                 background: bg, border: `1px solid ${border}`, color: "var(--text-primary)", boxSizing: "border-box" }}
               value={profileUrl}
               onChange={e => setProfileUrl(e.target.value)}
@@ -233,12 +233,12 @@ export default function InMail() {
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 6, color: "var(--text-muted)" }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "var(--text-muted)" }}>
               Objective <span style={{ color: textMuted, fontWeight: 400 }}>(optional)</span>
             </label>
             <textarea
               className="input"
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, fontSize: 13,
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, fontSize: 14,
                 background: bg, border: `1px solid ${border}`, color: "var(--text-primary)",
                 resize: "vertical", minHeight: 72, boxSizing: "border-box" }}
               value={objective}
@@ -247,7 +247,7 @@ export default function InMail() {
               disabled={isProcessing}
               rows={3}
             />
-            <p style={{ fontSize: 11, color: textMuted, marginTop: 4 }}>
+            <p style={{ fontSize: 12, color: textMuted, marginTop: 4 }}>
               If blank, defaults to networking & knowledge sharing.
             </p>
           </div>
@@ -265,7 +265,7 @@ export default function InMail() {
                 borderRadius: 8, display: "flex", gap: 10, alignItems: "flex-start"
               }}>
                 <AlertTriangle size={15} style={{ color: isAuthError ? "var(--accent-warning)" : "var(--accent-danger)", flexShrink: 0, marginTop: 1 }} />
-                <div style={{ fontSize: 12 }}>
+                <div style={{ fontSize: 13 }}>
                   <p style={{ color: isAuthError ? "#fde68a" : "#fca5a5", marginBottom: isAuthError ? 4 : 0 }}>
                     {errorMessage}
                   </p>
@@ -286,7 +286,7 @@ export default function InMail() {
               display: "flex", gap: 10, alignItems: "flex-start"
             }}>
               <CheckCircle2 size={15} style={{ color: "var(--accent-success)", flexShrink: 0, marginTop: 1 }} />
-              <div style={{ fontSize: 12, color: "var(--accent-success)" }}>
+              <div style={{ fontSize: 13, color: "var(--accent-success)" }}>
                 <p style={{ fontWeight: 600, marginBottom: 2 }}>Sent successfully!</p>
                 <p>Sent as {resultType === "inmail" ? "LinkedIn InMail (with subject)" : "Standard DM (open profile)"}</p>
               </div>
@@ -301,7 +301,7 @@ export default function InMail() {
               background: (isProcessing || !profileUrl.trim())
                 ? "rgba(0, 122, 255, 0.1)"
                 : "linear-gradient(135deg, var(--accent-primary), var(--accent-primary-hover))",
-              color: "#fff", fontWeight: 600, fontSize: 14,
+              color: "#fff", fontWeight: 600, fontSize: 15,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               cursor: (isProcessing || !profileUrl.trim()) ? "not-allowed" : "pointer",
               boxShadow: (isProcessing || !profileUrl.trim()) ? "none" : "0 4px 14px rgba(0, 122, 255, 0.1)",
@@ -328,7 +328,7 @@ export default function InMail() {
                   width: 8, height: 8, borderRadius: "50%", background: "var(--accent-primary)",
                   animation: isProcessing ? "pulse 1.5s infinite" : "none"
                 }} />
-                <span id="terminal-header" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                <span id="terminal-header" style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
                   Live Terminal
                 </span>
               </div>
@@ -337,7 +337,7 @@ export default function InMail() {
                 style={{
                   background: "none", border: "none", color: textMuted,
                   cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-                  padding: "2px 6px", borderRadius: 4, fontSize: 10, transition: "all 0.2s"
+                  padding: "2px 6px", borderRadius: 4, fontSize: 11, transition: "all 0.2s"
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
                 onMouseLeave={e => (e.currentTarget.style.background = "none")}
@@ -346,8 +346,10 @@ export default function InMail() {
                 <Copy size={10} /> Copy Logs
               </button>
             </div>
-            <div style={{
-              fontFamily: "monospace", fontSize: 11, color: textMuted,
+            <div
+              ref={logsContainerRef}
+              style={{
+              fontFamily: "monospace", fontSize: 12, color: textMuted,
               display: "flex", flexDirection: "column", gap: 4,
               maxHeight: 200, overflowY: "auto",
               userSelect: "text", cursor: "text"
@@ -367,7 +369,6 @@ export default function InMail() {
                   <span style={{ opacity: 0.5, marginRight: 6, userSelect: "none" }}>›</span>{log}
                 </div>
               ))}
-              <div ref={logsEndRef} />
             </div>
           </div>
         )}
@@ -381,10 +382,10 @@ export default function InMail() {
           display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0
         }}>
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 2 }}>
               InMail Pipeline
             </h2>
-            <p style={{ fontSize: 12, color: textMuted }}>
+            <p style={{ fontSize: 13, color: textMuted }}>
               {profileGroups.length} profile{profileGroups.length !== 1 ? "s" : ""} contacted ·{" "}
               {history.length} total message{history.length !== 1 ? "s" : ""}
             </p>
@@ -395,7 +396,7 @@ export default function InMail() {
             style={{
               padding: "7px 12px", borderRadius: 8, border: `1px solid ${border}`,
               background: "transparent", color: textMuted, cursor: "pointer",
-              display: "flex", alignItems: "center", gap: 6, fontSize: 12
+              display: "flex", alignItems: "center", gap: 6, fontSize: 13
             }}
           >
             <RefreshCw size={13} style={{ animation: loadingHistory ? "spin 1s linear infinite" : "none" }} />
@@ -416,7 +417,7 @@ export default function InMail() {
                 justifyContent: "center", height: "100%", gap: 12, color: textMuted, padding: 40
               }}>
                 <Inbox size={40} style={{ opacity: 0.3 }} />
-                <p style={{ fontSize: 14, textAlign: "center" }}>
+                <p style={{ fontSize: 15, textAlign: "center" }}>
                   No InMails sent yet.
                   <br />Use the compose panel to send your first InMail.
                 </p>
@@ -441,26 +442,26 @@ export default function InMail() {
                       <Avatar name={fullName} url={group.profileImageUrl} size={40} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                          <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-primary)" }}>
+                          <span style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary)" }}>
                             {fullName || "Unknown"}
                           </span>
                           <span style={{
-                            fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
+                            fontSize: 11, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
                             background: group.lastType === "inmail" ? "var(--accent-primary-glow)" : "rgba(52, 199, 89, 0.1)",
                             color: group.lastType === "inmail" ? "var(--text-accent)" : "var(--accent-success)"
                           }}>
                             {group.lastType === "inmail" ? "InMail" : "DM"}
                           </span>
                         </div>
-                        <p style={{ fontSize: 11, color: textMuted, marginBottom: 3, overflow: "hidden",
+                        <p style={{ fontSize: 12, color: textMuted, marginBottom: 3, overflow: "hidden",
                           textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {group.headline || group.company || "—"}
                         </p>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 10, color: textMuted, display: "flex", alignItems: "center", gap: 3 }}>
+                          <span style={{ fontSize: 11, color: textMuted, display: "flex", alignItems: "center", gap: 3 }}>
                             <MessageSquare size={10} /> {group.count} sent
                           </span>
-                          <span style={{ fontSize: 10, color: textMuted, display: "flex", alignItems: "center", gap: 3 }}>
+                          <span style={{ fontSize: 11, color: textMuted, display: "flex", alignItems: "center", gap: 3 }}>
                             <Clock size={10} /> {timeAgo(group.lastSentAt)}
                           </span>
                         </div>
@@ -485,7 +486,7 @@ export default function InMail() {
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700 }}>
+                    <h3 style={{ fontSize: 17, fontWeight: 700 }}>
                       {selectedProfile.firstName} {selectedProfile.lastName}
                     </h3>
                     <a
@@ -498,12 +499,12 @@ export default function InMail() {
                     </a>
                   </div>
                   {selectedProfile.headline && (
-                    <p style={{ fontSize: 12, color: textMuted, marginBottom: 2 }}>
+                    <p style={{ fontSize: 13, color: textMuted, marginBottom: 2 }}>
                       {selectedProfile.headline}
                     </p>
                   )}
                   {selectedProfile.company && (
-                    <p style={{ fontSize: 12, color: textMuted, display: "flex", alignItems: "center", gap: 4 }}>
+                    <p style={{ fontSize: 13, color: textMuted, display: "flex", alignItems: "center", gap: 4 }}>
                       <Building2 size={11} /> {selectedProfile.company}
                     </p>
                   )}
@@ -523,7 +524,7 @@ export default function InMail() {
               <div style={{
                 padding: "8px 12px", background: "rgba(0, 122, 255, 0.1)",
                 border: "1px solid rgba(0, 122, 255, 0.1)", borderRadius: 8,
-                fontSize: 12, color: "var(--text-accent)", marginBottom: 20
+                fontSize: 13, color: "var(--text-accent)", marginBottom: 20
               }}>
                 {profileInMails.length} InMail{profileInMails.length !== 1 ? "s" : ""} sent to this profile
               </div>
@@ -560,20 +561,20 @@ export default function InMail() {
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
                               {im.type === "inmail" && im.subject
                                 ? im.subject
                                 : im.type === "inmail" ? "InMail (no subject)" : "Standard DM"}
                             </span>
                             <span style={{
-                              fontSize: 9, padding: "1px 5px", borderRadius: 3, fontWeight: 700,
+                              fontSize: 10, padding: "1px 5px", borderRadius: 3, fontWeight: 700,
                               background: im.type === "inmail" ? "var(--accent-primary-glow)" : "rgba(52, 199, 89, 0.1)",
                               color: im.type === "inmail" ? "var(--text-accent)" : "#34d399", textTransform: "uppercase"
                             }}>
                               {im.type}
                             </span>
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, color: textMuted }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: textMuted }}>
                             <Clock size={9} />
                             {new Date(im.sent_at).toLocaleString("en-IN", {
                               day: "numeric", month: "short", year: "numeric",
@@ -608,17 +609,17 @@ export default function InMail() {
                               border: "1px solid var(--accent-primary-glow)",
                               borderRadius: 6
                             }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-accent)", display: "block", marginBottom: 2 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-accent)", display: "block", marginBottom: 2 }}>
                                 SUBJECT
                               </span>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
                                 {im.subject}
                               </span>
                             </div>
                           )}
                           <div style={{
                             padding: "10px 12px", background: bgCard,
-                            borderRadius: 6, fontSize: 13, lineHeight: 1.65,
+                            borderRadius: 6, fontSize: 14, lineHeight: 1.65,
                             color: "var(--text-secondary, #cbd5e1)",
                             whiteSpace: "pre-wrap", wordBreak: "break-word"
                           }}>

@@ -1167,7 +1167,7 @@ export async function scrapeProfile(
          if (settings) {
             fallbackData = await parseProfileJson(rawScrapedText, settings);
          } else {
-            console.warn("[Scraper] AI settings not provided. Skipping Mixtral JSON extraction.");
+            console.warn("[Scraper] AI settings not provided. Skipping NVIDIA API JSON extraction.");
          }
       } catch (e) {
          console.warn("[Scraper] Remote LLM call failed, reverting to rule-based semantic extractor.", e);
@@ -1490,6 +1490,7 @@ export async function importFromSearchUrl(
     if (isKeywordMatch) {
       console.log(`[Import] Searching keyword "${searchUrl}" using human-centric search...`);
       await performSearch(page, searchUrl, "people");
+      searchUrl = page.url(); // Grab resolved URL
     } else {
       await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
       await pageLoadDelay();
@@ -1499,21 +1500,40 @@ export async function importFromSearchUrl(
       if (searchUrl.includes("/search/results/") && !searchUrl.includes("/search/results/people/")) {
          const { applySearchFilter } = await import("../browser/session");
          await applySearchFilter(page, "people");
+         searchUrl = page.url(); // Grab resolved URL after filter
       }
     }
     
     console.log("[Import] Initial search loaded. Waiting ~10s for page to settle per requested organic flow...");
     await humanDelay(8000, 11000);
+    searchUrl = page.url(); // Final safety check to ensure we have the exact active URL
 
     let pageNum = 1;
+    try {
+      const parsedUrl = new URL(searchUrl);
+      const pageParam = parsedUrl.searchParams.get("page");
+      if (pageParam) {
+        pageNum = parseInt(pageParam, 10) || 1;
+      }
+    } catch (e) {
+      // Ignore URL parsing errors
+    }
 
-    while (results.length < maxLeads && pageNum <= 10) {
+    while (results.length < maxLeads && pageNum <= 100) {
       // ── Campaign Abort Check ─────────────────────────────────────────
       // This fires at the top of every page iteration. If the campaign was
       // paused while we were processing the previous page, stop immediately.
       if (isImportAborted(outreachOptions?.campaignId)) {
         console.log(`[Import] ⛔ Campaign ${outreachOptions?.campaignId} is paused. Aborting import loop.`);
         break;
+      }
+
+      // ── Daily Limits Check ───────────────────────────────────────────
+      if (outreachOptions?.limitManager) {
+        if (!outreachOptions.limitManager.canPerform("connectionRequests") || !outreachOptions.limitManager.canPerform("profileViews")) {
+          console.log(`[Import] 🛑 Daily limits reached. Aborting search import loop.`);
+          break;
+        }
       }
 
       // ── Phase 1: Emulate human reading by scrolling up/down ────────────
@@ -1664,6 +1684,11 @@ export async function importFromSearchUrl(
             console.log(`[Import] ⛔ Campaign paused mid-page. Stopping profile interactions.`);
             break;
           }
+
+          if (outreachOptions?.limitManager && (!outreachOptions.limitManager.canPerform("connectionRequests") || !outreachOptions.limitManager.canPerform("profileViews"))) {
+            console.log(`[Import] 🛑 Daily limits reached mid-page. Stopping profile interactions.`);
+            break;
+          }
           // Build fresh candidate list excluding already-clicked profiles this page
           const remaining = pageResults.filter(
             r => r.profileUrl.includes("/in/") && !pageVisited.has(r.profileUrl)
@@ -1701,28 +1726,41 @@ export async function importFromSearchUrl(
       await humanScroll(page, { direction: "down", distance: 400 });
       await humanDelay(1000, 2000);
 
-      // Ensure pagination has re-rendered after any back-navigation
-      await page
-        .waitForSelector(
-          '.artdeco-pagination, [aria-label="Next"], button[aria-label="Next"]',
-          { visible: true, timeout: 10000 }
-        )
-        .catch(() => console.log("[Import] Pagination container not found — will still attempt Next button search."));
-
-      const nextBtn =
-        (await page.$('button[aria-label="Next"]:not([disabled])')) ||
-        (await page.$(".artdeco-pagination__button--next:not([disabled])")) ||
-        (await page.$('a[aria-label="Next"]'));
-
-      if (!nextBtn) {
-        console.log(`[Import] No Next button found after page ${pageNum}. All pages exhausted.`);
+      // ── Phase 4: Navigate to next page using URL ──────────────────────
+      // Break early if we hit a page with zero results
+      if (pageResults.length === 0) {
+        console.log(`[Import] No results found on page ${pageNum}. All pages exhausted.`);
         break;
       }
 
-      await humanClick(page, nextBtn as any);
-      await pageLoadDelay();
-      await humanDelay(2000, 4000);
       pageNum++;
+      let nextUrl = searchUrl;
+
+      try {
+        const parsedUrl = new URL(searchUrl);
+        parsedUrl.searchParams.set("page", pageNum.toString());
+        nextUrl = parsedUrl.toString();
+      } catch (e) {
+        // Fallback for invalid URLs
+        if (searchUrl.includes("?")) {
+           if (searchUrl.includes("&page=") || searchUrl.includes("?page=")) {
+              nextUrl = searchUrl.replace(/([?&])page=\d+/, `$1page=${pageNum}`);
+           } else {
+              nextUrl = `${searchUrl}&page=${pageNum}`;
+           }
+        } else {
+           nextUrl = `${searchUrl}?page=${pageNum}`;
+        }
+      }
+
+      console.log(`[Import] Navigating to next page (${pageNum}) via URL: ${nextUrl}`);
+      
+      // Update the active searchUrl for the next iteration
+      searchUrl = nextUrl;
+      
+      await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+      await pageLoadDelay();
+      await humanDelay(3000, 5000);
     }
 
     logActivity("search_import_done", "linkedin", {

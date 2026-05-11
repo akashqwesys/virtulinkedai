@@ -644,7 +644,7 @@ export default function Settings() {
                   }}
                 />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: "14px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div style={{ fontWeight: 600, fontSize: "15px", display: "flex", alignItems: "center", gap: "6px" }}>
                     {msStatus === null
                       ? "Checking status..."
                       : msStatus.connected
@@ -697,13 +697,13 @@ export default function Settings() {
                 padding: "24px",
               }}
             >
-              <div style={{ fontWeight: 600, marginBottom: "16px", fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ fontWeight: 600, marginBottom: "16px", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
                 <Info size={18} color="var(--accent-primary)" /> Step-by-Step Guide: Connect Office 365
               </div>
               
               <div className="text-sm text-muted" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                 <div>
-                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 1: Create Azure App</strong>
+                  <strong style={{ color: "var(--text-main)", fontSize: "15px" }}>Step 1: Create Azure App</strong>
                   <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
                     <li>Go to the <a href="https://entra.microsoft.com/" target="_blank" rel="noreferrer" style={{color: "var(--accent-primary)", textDecoration: "none"}}>Microsoft Entra admin center</a>.</li>
                     <li>Navigate to <strong>Applications → App registrations</strong> and click <strong>+ New registration</strong>.</li>
@@ -714,7 +714,7 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 2: Configure the Platform</strong>
+                  <strong style={{ color: "var(--text-main)", fontSize: "15px" }}>Step 2: Configure the Platform</strong>
                   <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
                     <li>Go to <strong>Authentication</strong> on the left menu.</li>
                     <li>Click <strong>+ Add a platform</strong> and select <strong>Mobile and desktop applications</strong>.</li>
@@ -726,7 +726,7 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 3: Add API Permissions</strong>
+                  <strong style={{ color: "var(--text-main)", fontSize: "15px" }}>Step 3: Add API Permissions</strong>
                   <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
                     <li>Go to <strong>API permissions</strong> on the left menu.</li>
                     <li>Click <strong>+ Add a permission</strong> → <strong>Microsoft Graph</strong> → <strong>Delegated permissions</strong>.</li>
@@ -737,7 +737,7 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <strong style={{ color: "var(--text-main)", fontSize: "14px" }}>Step 4: Connect to Application</strong>
+                  <strong style={{ color: "var(--text-main)", fontSize: "15px" }}>Step 4: Connect to Application</strong>
                   <ol style={{ margin: "6px 0 0 20px", padding: 0, lineHeight: "1.6" }}>
                     <li>Go back to <strong>Overview</strong> in the Azure portal.</li>
                     <li>Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong>.</li>

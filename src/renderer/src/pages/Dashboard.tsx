@@ -339,7 +339,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
           style={{ marginBottom: "32px" }}
         >
           {/* LinkedIn Status */}
-          <div className="card stat-card">
+          <div className="card stat-card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div
               className="stat-icon"
               style={{
@@ -362,38 +362,38 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             >
               {linkedinStatus.isLoggedIn ? `Connected` : "Not Connected"}
             </div>
-            {linkedinStatus.profileName && (
-              <div
-                className="stat-change positive"
-                style={{ textTransform: "none", letterSpacing: "normal" }}
-              >
-                {linkedinStatus.profileName}
-              </div>
-            )}
-            {!linkedinStatus.isLoggedIn && (
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ marginTop: "12px", width: "100%" }}
-                onClick={handleLinkedInLogin}
-                disabled={loading.linkedin}
-              >
-                {loading.linkedin ? <><RefreshCw size={14} className="animate-spin" /> Logging in...</> : <><LinkIcon size={14} /> Connect LinkedIn</>}
-              </button>
-            )}
-            {linkedinStatus.isLoggedIn && (
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ marginTop: "12px", width: "100%", color: "var(--accent-danger)" }}
-                onClick={handleLinkedInLogout}
-                disabled={loading.linkedin}
-              >
-                {loading.linkedin ? <><RefreshCw size={14} className="animate-spin" /> Logging out...</> : <><LogOut size={14} /> Logout</>}
-              </button>
-            )}
+            <div
+              className="stat-change positive"
+              style={{ textTransform: "none", letterSpacing: "normal", minHeight: "18px" }}
+            >
+              {linkedinStatus.profileName || "\u00A0"}
+            </div>
+            
+            <div style={{ marginTop: "auto", paddingTop: "12px", minHeight: "36px" }}>
+              {!linkedinStatus.isLoggedIn ? (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: "100%" }}
+                  onClick={handleLinkedInLogin}
+                  disabled={loading.linkedin}
+                >
+                  {loading.linkedin ? <><RefreshCw size={14} className="animate-spin" /> Logging in...</> : <><LinkIcon size={14} /> Connect LinkedIn</>}
+                </button>
+              ) : (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: "100%", color: "var(--accent-danger)" }}
+                  onClick={handleLinkedInLogout}
+                  disabled={loading.linkedin}
+                >
+                  {loading.linkedin ? <><RefreshCw size={14} className="animate-spin" /> Logging out...</> : <><LogOut size={14} /> Logout</>}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* AI Status */}
-          <div className="card stat-card">
+          <div className="card stat-card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div
               className="stat-icon"
               style={{
@@ -419,22 +419,25 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               style={{ 
                 textTransform: "none", 
                 letterSpacing: "normal",
-                color: "var(--text-muted)"
+                color: "var(--text-muted)",
+                minHeight: "18px"
               }}
             >
               {settings?.ai?.primaryModel || "NVIDIA NIM"}
             </div>
-            <button
-              className="btn btn-secondary btn-sm"
-              style={{ marginTop: "12px", width: "100%" }}
-              onClick={() => onNavigate?.("settings")}
-            >
-              <SettingsIcon size={14} /> Configure API
-            </button>
+            <div style={{ marginTop: "auto", paddingTop: "12px", minHeight: "36px" }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ width: "100%" }}
+                onClick={() => onNavigate?.("settings")}
+              >
+                <SettingsIcon size={14} /> Configure API
+              </button>
+            </div>
           </div>
 
           {/* Email Status */}
-          <div className="card stat-card">
+          <div className="card stat-card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div
               className="stat-icon"
               style={{
@@ -457,28 +460,28 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             >
               {emailStatus.authenticated ? "Connected" : "Not Connected"}
             </div>
-            {emailStatus.email && (
-              <div
-                className="stat-change positive"
-                style={{ textTransform: "none", letterSpacing: "normal" }}
-              >
-                {emailStatus.email}
-              </div>
-            )}
-            {!emailStatus.authenticated && (
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ marginTop: "12px", width: "100%" }}
-                onClick={handleEmailAuth}
-                disabled={loading.email}
-              >
-                {loading.email ? <><RefreshCw size={14} className="animate-spin" /> Authenticating...</> : <><Lock size={14} /> Connect O365</>}
-              </button>
-            )}
+            <div
+              className="stat-change positive"
+              style={{ textTransform: "none", letterSpacing: "normal", minHeight: "18px" }}
+            >
+              {emailStatus.email || "\u00A0"}
+            </div>
+            <div style={{ marginTop: "auto", paddingTop: "12px", minHeight: "36px" }}>
+              {!emailStatus.authenticated && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: "100%" }}
+                  onClick={handleEmailAuth}
+                  disabled={loading.email}
+                >
+                  {loading.email ? <><RefreshCw size={14} className="animate-spin" /> Authenticating...</> : <><Lock size={14} /> Connect O365</>}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Browser Status */}
-          <div className="card stat-card">
+          <div className="card stat-card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div
               className="stat-icon"
               style={{
@@ -514,10 +517,12 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 color: "var(--text-muted)",
                 textTransform: "none",
                 letterSpacing: "normal",
+                minHeight: "18px"
               }}
             >
               Puppeteer Stealth Mode
             </div>
+            <div style={{ marginTop: "auto", paddingTop: "12px", minHeight: "36px" }}></div>
           </div>
         </div>
 
@@ -592,7 +597,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                   color: "var(--text-muted)",
                 }}
               >
-                <div style={{ fontSize: "32px", marginBottom: "12px" }}>📭</div>
+                <div style={{ fontSize: "33px", marginBottom: "12px" }}>📭</div>
                 <p>
                   No activity yet. Launch the browser and connect to LinkedIn to
                   get started.

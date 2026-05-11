@@ -749,23 +749,27 @@ export default function Inbox() {
                     </div>
                   )}
                   <div style={{
-                    maxWidth: "65%",
-                    padding: "8px 12px",
-                    borderRadius: msg.direction === "outbound" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                    background: "var(--bg-card)",
-                    fontSize: "0.75rem", lineHeight: 1.45,
-                    border: "1px solid var(--border-subtle)",
-                    boxShadow: "var(--shadow-sm)",
+                    maxWidth: "70%",
+                    padding: "10px 14px",
+                    borderRadius: msg.direction === "outbound" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                    background: msg.direction === "outbound" ? "rgba(139, 92, 246, 0.1)" : "var(--bg-card)",
+                    backdropFilter: "blur(40px)",
+                    WebkitBackdropFilter: "blur(40px)",
+                    color: "var(--text-primary)",
+                    fontSize: "0.8125rem", lineHeight: 1.5,
+                    border: msg.direction === "outbound" ? "1px solid rgba(139, 92, 246, 0.3)" : "1px solid var(--border-subtle)",
+                    boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 4px 12px rgba(0,0,0,0.1)",
+                    fontFamily: "var(--font-family)",
                   }}>
-                    <div style={{ wordBreak: "break-word" }}>{msg.content}</div>
+                    <div style={{ wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{msg.content}</div>
                     <div style={{
-                      marginTop: 2, fontSize: "0.6rem", opacity: 0.45,
-                      display: "flex", alignItems: "center", gap: 3,
+                      marginTop: 4, fontSize: "0.65rem", opacity: 0.5,
+                      display: "flex", alignItems: "center", gap: 4,
                       justifyContent: msg.direction === "outbound" ? "flex-end" : "flex-start",
                     }}>
-                      {msg.isAutomated && <Bot size={8} />}
+                      {msg.isAutomated && <Bot size={10} />}
                       {formatMessageTime(msg.sentAt)}
-                      {msg.direction === "outbound" && <CheckCheck size={8} style={{ color: "var(--text-accent)" }} />}
+                      {msg.direction === "outbound" && <CheckCheck size={10} style={{ color: "var(--text-accent)" }} />}
                     </div>
                   </div>
                 </div>
@@ -819,15 +823,23 @@ export default function Inbox() {
                     rows={2}
                     style={{
                       width: "100%", resize: "none", lineHeight: 1.5,
-                      padding: "10px 110px 10px 14px",  /* right padding reserves space for AI button */
-                      background: "var(--bg-input)", border: "1px solid var(--border-subtle)",
-                      borderRadius: "10px", minHeight: "52px",
+                      padding: "14px 110px 14px 16px",
+                      background: "var(--bg-card)", backdropFilter: "blur(20px)",
+                      border: "1px solid var(--border-primary)",
+                      borderRadius: "18px", minHeight: "52px",
                       color: "var(--text-primary)", outline: "none", boxSizing: "border-box",
-                      transition: "border-color 0.2s ease",
-                      fontSize: "0.8125rem",
+                      transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                      fontSize: "0.8125rem", fontFamily: "var(--font-family)",
+                      boxShadow: "inset 0 2px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)"
                     }}
-                    onFocus={e => (e.currentTarget.style.borderColor = "var(--accent-primary)")}
-                    onBlur={e => (e.currentTarget.style.borderColor = "var(--border-subtle)")}
+                    onFocus={e => {
+                      e.currentTarget.style.borderColor = "var(--accent-primary)";
+                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(139, 92, 246, 0.15), inset 0 2px 4px rgba(0,0,0,0.1)";
+                    }}
+                    onBlur={e => {
+                      e.currentTarget.style.borderColor = "var(--border-primary)";
+                      e.currentTarget.style.boxShadow = "inset 0 2px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)";
+                    }}
                   />
 
                   {/* ✨ Write with AI — floated inside right side of textarea */}
@@ -870,16 +882,21 @@ export default function Inbox() {
                   onClick={sendMessage}
                   disabled={!replyText.trim() || isSending}
                   style={{
-                    cursor: "pointer", padding: "0 18px", gap: 6,
+                    cursor: replyText.trim() && !isSending ? "pointer" : "not-allowed",
+                    padding: "0 20px", gap: 6,
                     display: "flex", alignItems: "center", height: "52px",
                     background: replyText.trim() && !isSending
-                      ? "var(--accent-primary-glow)"
-                      : "var(--bg-tertiary)",
-                    border: "1px solid var(--border-primary)",
-                    color: "var(--text-primary)", borderRadius: "10px",
+                      ? "rgba(139, 92, 246, 0.9)"
+                      : "var(--bg-card)",
+                    border: replyText.trim() && !isSending ? "1px solid rgba(139, 92, 246, 1)" : "1px solid var(--border-primary)",
+                    color: replyText.trim() && !isSending ? "#fff" : "var(--text-muted)",
+                    borderRadius: "18px",
                     fontSize: "0.8rem", fontWeight: 600, outline: "none",
                     transition: "all 0.2s ease",
                     flexShrink: 0,
+                    boxShadow: replyText.trim() && !isSending 
+                      ? "0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 1px rgba(255,255,255,0.4)" 
+                      : "var(--shadow-sm)",
                   }}
                 >
                   <Send size={14} />

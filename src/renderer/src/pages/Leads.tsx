@@ -120,7 +120,8 @@ export default function Leads() {
       }
     }
     fetchLeads();
-    const id = setInterval(fetchLeads, 8000);
+    // Fast polling for realtime pipeline movement to match Campaigns section
+    const id = setInterval(fetchLeads, 3000);
     return () => clearInterval(id);
   }, []);
 

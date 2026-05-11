@@ -33,67 +33,79 @@ type ButtonState = "message_direct" | "inmail_direct" | "in_more" | "none";
 
 async function detectButtonState(page: Page): Promise<ButtonState> {
   return page.evaluate(() => {
-    // ── Step 1: Find the profile actions container (top-card CTA row) ────────
-    // Try progressively broader containers. We must NOT fall back to full `main`
-    // because that contains unrelated "More" buttons (post options, etc.)
-    const actionContainerSelectors = [
-      ".pvs-profile-actions",            // 2023–2025 standard
-      ".pv-top-card-v2-ctas",            // 2022 layout
-      ".pv-s-profile-actions",           // older
-      ".pv-top-card__ctas",              // even older
-      ".ph5.pb5 .mt2",                   // generic top-card inner
-      ".ph5.pb5",                        // top-card wrapper
-    ];
-
-    let actions: Element | null = null;
-    for (const sel of actionContainerSelectors) {
-      const el = document.querySelector(sel);
-      if (el) { actions = el; break; }
-    }
-
-    // ── Step 2: Scan buttons inside the action container ─────────────────────
-    const scanForButton = (container: Element): ButtonState => {
-      const buttons = Array.from(container.querySelectorAll("button, a[role='button']"));
+    // Helper to scan a given container for buttons
+    const scanForButton = (container: Element | Document): ButtonState => {
+      const buttons = Array.from(container.querySelectorAll("button, a"));
       for (const btn of buttons) {
+        const isButtonLike = btn.tagName === "BUTTON" || btn.getAttribute("role") === "button" || btn.className.includes("btn") || btn.className.includes("button");
+        const href = btn.getAttribute("href") || "";
+        
+        if (btn.tagName === "A" && !isButtonLike && !href.includes("messaging")) {
+           continue;
+        }
+
         const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
         const text = (btn.textContent || "").trim().toLowerCase();
         const combined = ariaLabel + " " + text;
 
-        // Direct InMail button (e.g. "Send InMail", "InMail")
-        if (combined.includes("inmail") && !combined.includes("more")) {
-          return "inmail_direct";
-        }
-        // Direct Message button (e.g. "Message", "Send a message")
+        if (combined.includes("inmail") && !combined.includes("more")) return "inmail_direct";
         if (
-          (combined.includes("message") || text === "message") &&
+          (combined.includes("message") || text.includes("message") || href.includes("/messaging/compose")) &&
           !combined.includes("inmail") &&
           !combined.includes("connect") &&
-          !combined.includes("more")
-        ) {
-          return "message_direct";
-        }
+          !combined.includes("more") &&
+          !combined.includes("view my services")
+        ) return "message_direct";
       }
 
-      // ── Step 3: Only look for More button WITHIN this action container ──────
-      // aria-label often is "More actions" or just "More"
       const moreBtn = container.querySelector(
-        "button[aria-label*='More'], button[aria-label*='more'], button[aria-label*='actions']"
+        "button[aria-label*='More'], button[aria-label*='more'], button[aria-label*='actions'], button.artdeco-dropdown__trigger"
       );
       if (moreBtn) return "in_more";
 
       return "none";
     };
 
-    if (actions) {
-      const result = scanForButton(actions);
-      if (result !== "none") return result;
+    // 1. Direct explicit link check
+    const explicitMsgLink = document.querySelector("a[href*='/messaging/compose/']");
+    if (explicitMsgLink) return "message_direct";
+
+    // 2. Standard class-based check
+    const actionContainerSelectors = [
+      ".pvs-profile-actions",
+      ".pv-top-card-v2-ctas",
+      ".pv-s-profile-actions",
+      ".pv-top-card__ctas",
+      ".ph5.pb5 .mt2",
+      ".ph5.pb5",
+      ".artdeco-card .pv-top-card-v2-ctas",
+    ];
+
+    for (const sel of actionContainerSelectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const result = scanForButton(el);
+        if (result !== "none") return result;
+      }
     }
 
-    // ── Step 4: Last resort — try the top 400px of the page only ─────────────
-    // This avoids picking up More buttons from posts/feed below
-    const topSection = document.querySelector(".scaffold-layout__main") || document.querySelector("main");
+    // 3. Robust Relative Traversal (Bypasses Obfuscated Classes)
+    // Find the profile name (h1), go up a few levels to the top-card container, and scan.
+    const h1 = document.querySelector("h1");
+    if (h1) {
+      let ancestor = h1.parentElement;
+      // Go up up to 6 levels to find the container holding both name and buttons
+      for (let i = 0; i < 6; i++) {
+        if (!ancestor) break;
+        const result = scanForButton(ancestor);
+        if (result !== "none") return result;
+        ancestor = ancestor.parentElement;
+      }
+    }
+
+    // 4. Ultimate fallback: First few sections of main/body
+    const topSection = document.querySelector(".scaffold-layout__main") || document.querySelector("main") || document.body;
     if (topSection) {
-      // Only look at the first child sections (top card area, ~first 2 sections)
       const firstChildren = Array.from(topSection.children).slice(0, 3);
       for (const child of firstChildren) {
         const result = scanForButton(child);
@@ -108,8 +120,40 @@ async function detectButtonState(page: Page): Promise<ButtonState> {
 // ─── Open compose modal ──────────────────────────────────────────────────────
 async function openComposeModal(page: Page, state: ButtonState): Promise<void> {
   if (state === "message_direct" || state === "inmail_direct") {
-    // Find and click the visible Message/InMail button in the top-card CTA row
     const clicked = await page.evaluate(() => {
+      const isVisible = (el: Element) => {
+        const style = window.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+
+      const scanAndClick = (container: Element | Document): boolean => {
+        const buttons = Array.from(container.querySelectorAll("button, a")).filter(isVisible);
+        for (const btn of buttons) {
+          const href = btn.getAttribute("href") || "";
+          const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+          const text = (btn.textContent || "").trim().toLowerCase();
+          const combined = ariaLabel + " " + text;
+          if (
+            (combined.includes("message") || combined.includes("inmail") || href.includes("/messaging/compose")) &&
+            !combined.includes("connect") &&
+            !combined.includes("more") &&
+            !combined.includes("view my services")
+          ) {
+            (btn as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const explicitMsgLinks = Array.from(document.querySelectorAll("a[href*='/messaging/compose/']")).filter(isVisible);
+      if (explicitMsgLinks.length > 0) {
+        (explicitMsgLinks[0] as HTMLElement).click();
+        return true;
+      }
+
       const actionContainerSelectors = [
         ".pvs-profile-actions",
         ".pv-top-card-v2-ctas",
@@ -119,27 +163,24 @@ async function openComposeModal(page: Page, state: ButtonState): Promise<void> {
         ".ph5.pb5",
       ];
 
-      let container: Element | null = null;
       for (const sel of actionContainerSelectors) {
         const el = document.querySelector(sel);
-        if (el) { container = el; break; }
+        if (el && scanAndClick(el)) return true;
       }
-      if (!container) return false;
 
-      const buttons = Array.from(container.querySelectorAll("button, a[role='button']"));
-      for (const btn of buttons) {
-        const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
-        const text = (btn.textContent || "").trim().toLowerCase();
-        const combined = ariaLabel + " " + text;
-        if (
-          (combined.includes("message") || combined.includes("inmail")) &&
-          !combined.includes("connect") &&
-          !combined.includes("more")
-        ) {
-          (btn as HTMLElement).click();
-          return true;
+      const h1 = document.querySelector("h1");
+      if (h1) {
+        let ancestor = h1.parentElement;
+        for (let i = 0; i < 6; i++) {
+          if (!ancestor) break;
+          if (scanAndClick(ancestor)) return true;
+          ancestor = ancestor.parentElement;
         }
       }
+
+      const topCard = document.querySelector(".pv-top-card") || document.querySelector("main") || document.body;
+      if (topCard && scanAndClick(topCard)) return true;
+
       return false;
     });
 
@@ -147,8 +188,21 @@ async function openComposeModal(page: Page, state: ButtonState): Promise<void> {
     return;
   }
 
-  // state === "in_more" — click the More button in the action row, then pick from dropdown
   const clicked = await page.evaluate(() => {
+    const isVisible = (el: Element) => {
+      const style = window.getComputedStyle(el);
+      return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+    };
+
+    const scanAndClickMore = (container: Element | Document): boolean => {
+      const moreBtns = Array.from(container.querySelectorAll(
+        "button[aria-label*='More'], button[aria-label*='more'], button[aria-label*='actions'], button.artdeco-dropdown__trigger"
+      )).filter(isVisible);
+      if (moreBtns.length === 0) return false;
+      (moreBtns[0] as HTMLElement).click();
+      return true;
+    };
+
     const actionContainerSelectors = [
       ".pvs-profile-actions",
       ".pv-top-card-v2-ctas",
@@ -157,40 +211,63 @@ async function openComposeModal(page: Page, state: ButtonState): Promise<void> {
       ".ph5.pb5",
     ];
 
-    let container: Element | null = null;
     for (const sel of actionContainerSelectors) {
       const el = document.querySelector(sel);
-      if (el) { container = el; break; }
+      if (el && scanAndClickMore(el)) return true;
     }
-    if (!container) return false;
 
-    const moreBtn = container.querySelector(
-      "button[aria-label*='More'], button[aria-label*='more'], button[aria-label*='actions']"
-    ) as HTMLElement | null;
-    if (!moreBtn) return false;
-    moreBtn.click();
-    return true;
+    const h1 = document.querySelector("h1");
+    if (h1) {
+      let ancestor = h1.parentElement;
+      for (let i = 0; i < 6; i++) {
+        if (!ancestor) break;
+        if (scanAndClickMore(ancestor)) return true;
+        ancestor = ancestor.parentElement;
+      }
+    }
+
+    const topCard = document.querySelector(".pv-top-card") || document.querySelector("main") || document.body;
+    if (topCard && scanAndClickMore(topCard)) return true;
+
+    return false;
   });
 
   if (!clicked) throw new Error("More actions button not found in profile action row.");
-  await humanDelay(700, 1200);
+  await new Promise(r => setTimeout(r, 700));
 
-  // Find Message or InMail inside the dropdown
   const dropdownClicked = await page.evaluate(() => {
+    const isVisible = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+
     const dropdownSelectors = [
       ".artdeco-dropdown__content",
       "[role='menu']",
       ".pvs-overflow-actions-dropdown__content",
       ".artdeco-dropdown__content--is-open",
+      ".pv-s-profile-actions__overflow-dropdown",
     ];
     let dropdown: Element | null = null;
     for (const sel of dropdownSelectors) {
       const el = document.querySelector(sel);
-      if (el) { dropdown = el; break; }
+      if (el && isVisible(el)) { dropdown = el; break; }
     }
-    if (!dropdown) return false;
+    
+    if (!dropdown) {
+      const allItems = Array.from(document.querySelectorAll("li, [role='menuitem'], .artdeco-dropdown__item")).filter(isVisible);
+      for (const item of allItems) {
+        const text = (item.textContent || "").toLowerCase();
+        if (text.includes("message") || text.includes("inmail") || text.includes("send inmail")) {
+           const clickable = (item.querySelector("button, a") || item) as HTMLElement;
+           clickable.click();
+           return true;
+        }
+      }
+      return false;
+    }
 
-    const items = Array.from(dropdown.querySelectorAll("li, button, a, [role='menuitem']"));
+    const items = Array.from(dropdown.querySelectorAll("li, button, a, [role='menuitem'], .artdeco-dropdown__item")).filter(isVisible);
     for (const item of items) {
       const text = (item.textContent || "").toLowerCase();
       const label = (item.getAttribute("aria-label") || "").toLowerCase();
@@ -208,188 +285,55 @@ async function openComposeModal(page: Page, state: ButtonState): Promise<void> {
   }
 }
 
-// ─── Detect if the compose overlay is InMail (has subject) or DM ────────────
-async function detectIsInMailCompose(page: Page): Promise<boolean> {
-  // Wait for compose overlay to appear
-  await page
-    .waitForSelector(
-      [
-        ".msg-overlay-bubble-header",
-        ".msg-form",
-        ".msg-content-creation-form",
-        ".msg-compose-form",
-        '[data-test-modal-id="send-message-modal"]',
-        '.artdeco-modal[role="dialog"]',
-      ].join(", "),
-      { timeout: 8000 }
-    )
-    .catch(() => null);
-
-  return page.evaluate(() => {
-    // Definitive signal: InMail has a Subject field; standard DM does not
-    const subjectSelectors = [
-      'input.msg-form__subject',
-      'input[name="subject"]',
-      'input[placeholder*="Subject"]',
-      'input[placeholder*="subject"]',
-      ".msg-content-creation-form__subject-field",
-      "[data-test-msg-form-subject]",
-    ];
-    for (const sel of subjectSelectors) {
-      if (document.querySelector(sel)) return true;
-    }
-    // Also check compose header text for "InMail"
-    const header = document.querySelector(
-      ".msg-overlay-bubble-header__title, .msg-form__headline, .artdeco-modal__header h2"
-    );
-    return (header?.textContent || "").toLowerCase().includes("inmail");
-  });
-}
-
-// ─── Fill & send an InMail (subject + body) ──────────────────────────────────
-async function fillAndSendInMail(
+// ─── Fill & send message (handles both InMail and DM) ────────────────────────
+async function fillAndSendMessage(
   page: Page,
   subject: string,
   body: string
-): Promise<void> {
-  pushLog("Filling subject line...");
+): Promise<{ type: "inmail" | "dm"; subjectFilled: string }> {
 
-  const subjectInput = await page
-    .waitForSelector(
-      [
-        "input.msg-form__subject",
-        'input[name="subject"]',
-        'input[placeholder*="Subject"]',
-        'input[placeholder*="subject"]',
-        ".msg-content-creation-form__subject-field",
-        "[data-test-msg-form-subject]",
-      ].join(", "),
-      { timeout: 6000 }
-    )
-    .catch(() => null);
+  pushLog("Waiting 3-4 seconds for compose modal to fully render and focus...");
+  await humanDelay(3000, 4000);
 
-  if (subjectInput) {
-    await humanClick(page, subjectInput as any);
-    await humanDelay(300, 600);
-    for (const ch of subject) {
-      await page.keyboard.type(ch);
-      await new Promise((r) => setTimeout(r, 50 + Math.random() * 80));
-    }
-    await humanDelay(400, 800);
-  } else {
-    pushLog("⚠ Subject field not found — continuing without subject");
+  // 1. Type Subject (LinkedIn auto-focuses the Subject box in InMail modals)
+  pushLog("Typing subject in the auto-focused text box...");
+  for (const ch of subject) {
+    await page.keyboard.type(ch);
+    await new Promise(r => setTimeout(r, 20 + Math.random() * 40));
   }
+  
+  await humanDelay(500, 1000);
 
-  pushLog("Filling message body...");
+  // 2. Press Tab to shift focus to the Body text area
+  pushLog("Pressing 'Tab' to move cursor to the body text area...");
+  await page.keyboard.press("Tab");
+  
+  await humanDelay(500, 1000);
 
-  const bodyField = await page
-    .waitForSelector(
-      [
-        '.msg-form__contenteditable[contenteditable="true"]',
-        'div[data-test-msg-form-body-field]',
-        '[role="textbox"][contenteditable="true"]',
-        '.msg-form [contenteditable="true"]',
-        '.artdeco-modal [contenteditable="true"]',
-      ].join(", "),
-      { timeout: 6000 }
-    )
-    .catch(() => null);
-
-  if (!bodyField) throw new Error("Body field not found in InMail compose overlay");
-
-  await humanClick(page, bodyField as any);
-  await humanDelay(300, 600);
-
+  // 3. Type Body Message
+  pushLog("Typing body message...");
   for (const char of body) {
     if (char === "\n") {
+      // Use Shift+Enter for newlines
+      await page.keyboard.down("Shift");
       await page.keyboard.press("Enter");
+      await page.keyboard.up("Shift");
     } else {
       await page.keyboard.type(char);
     }
-    await new Promise((r) => setTimeout(r, 40 + Math.random() * 80));
-    if (Math.random() < 0.03) await humanDelay(200, 500);
+    await new Promise(r => setTimeout(r, 15 + Math.random() * 30));
+    if (Math.random() < 0.02) await humanDelay(80, 200);
   }
 
-  pushLog("Reviewing message before sending...");
+  pushLog("✓ Finished typing. Reviewing before send...");
   await thinkingDelay();
 
-  // Find send button
-  const sendBtn = await page
-    .waitForSelector(
-      [
-        "button.msg-form__send-button",
-        'button[aria-label*="Send InMail"]',
-        'button[aria-label*="Send inmail"]',
-        'button[aria-label="Send"]',
-        "button::-p-text(Send InMail)",
-        "button::-p-text(Send)",
-      ].join(", "),
-      { timeout: 5000 }
-    )
-    .catch(() => null);
-
-  if (!sendBtn) throw new Error("Send button not found in InMail compose");
-
-  await humanClick(page, sendBtn as any);
+  // 4. Press Enter to send
+  pushLog("Sending message via 'Enter' key on keyboard...");
+  await page.keyboard.press("Enter");
   await humanDelay(2000, 3000);
-}
 
-// ─── Fill & send a standard DM (open profile) ───────────────────────────────
-async function fillAndSendDM(page: Page, body: string): Promise<void> {
-  pushLog("Filling standard DM body...");
-
-  const bodyField = await page
-    .waitForSelector(
-      [
-        '.msg-form__contenteditable[contenteditable="true"]',
-        '.msg-overlay-conversation-bubble__content-wrapper [contenteditable="true"]',
-        '[role="textbox"][contenteditable="true"]',
-        '.msg-form [contenteditable="true"]',
-      ].join(", "),
-      { timeout: 6000 }
-    )
-    .catch(() => null);
-
-  if (!bodyField) throw new Error("Message body field not found for DM compose");
-
-  await humanClick(page, bodyField as any);
-  await humanDelay(300, 600);
-
-  for (const char of body) {
-    if (char === "\n") {
-      await page.keyboard.press("Enter");
-    } else {
-      await page.keyboard.type(char);
-    }
-    await new Promise((r) => setTimeout(r, 40 + Math.random() * 80));
-    if (Math.random() < 0.03) await humanDelay(150, 400);
-  }
-
-  pushLog("Reviewing DM before sending...");
-  await thinkingDelay();
-
-  const sendBtn = await page
-    .waitForSelector(
-      [
-        "button.msg-form__send-button",
-        'button[aria-label="Send"]',
-        'button[aria-label*="Send message"]',
-        "button::-p-text(Send)",
-      ].join(", "),
-      { timeout: 5000 }
-    )
-    .catch(() => null);
-
-  if (!sendBtn) {
-    // Last resort: Enter key
-    pushLog("⚠ Send button not found — trying Enter key...");
-    await page.keyboard.press("Enter");
-    await humanDelay(1500, 2500);
-    return;
-  }
-
-  await humanClick(page, sendBtn as any);
-  await humanDelay(1500, 2500);
+  return { type: "inmail", subjectFilled: subject };
 }
 
 // ─── Quick identity scrape (no scroll, no popup) ────────────────────────────
@@ -679,21 +623,28 @@ export async function processDirectInMail(
     await openComposeModal(page, buttonState);
     await humanDelay(2000, 3500);
 
-    // ── STEP 6: Detect compose type ──────────────────────────────────────
-    const isInMail = await detectIsInMailCompose(page);
-    pushLog(`✓ Compose type: ${isInMail ? "InMail (with subject)" : "Standard DM"}`);
-
-    // ── STEP 7: Fill and send ────────────────────────────────────────────
-    if (isInMail) {
-      await fillAndSendInMail(page, subject, body);
-    } else {
-      // For standard DM (open profiles), send the body only
-      await fillAndSendDM(page, body);
+    // ── Out of Credits / Upsell Check ────────────────────────────────────
+    const isUpsell = await page.evaluate(() => {
+      const text = document.body.innerText.toLowerCase();
+      return (
+        text.includes("out of inmail credits") ||
+        text.includes("reach more people with premium") ||
+        text.includes("upgrade to premium") ||
+        !!document.querySelector(".premium-upsell-modal, .artdeco-modal__header--premium")
+      );
+    });
+    if (isUpsell) {
+      throw new Error("Out of InMail credits or Premium upgrade required. Cannot send message.");
     }
 
-    // ── STEP 8: Persist & log ────────────────────────────────────────────
-    const type = isInMail ? "inmail" : "dm";
+    // ── STEP 6 & 7: Fill and send (handles both InMail and DM types) ────
+    const sendResult = await fillAndSendMessage(page, subject, body);
+    const type = sendResult.type;
+    const finalSubject = sendResult.subjectFilled;
 
+    pushLog(`✓ Compose type verified: ${type === "inmail" ? "InMail (with subject)" : "Standard DM"}`);
+
+    // ── STEP 8: Persist & log ────────────────────────────────────────────
     try {
       saveInMailRecord({
         profileUrl: cleanUrl,
@@ -702,7 +653,7 @@ export async function processDirectInMail(
         headline: safeIdentity.headline,
         company: safeIdentity.company,
         profileImageUrl: safeIdentity.profileImageUrl,
-        subject: isInMail ? subject : "",
+        subject: finalSubject,
         body,
         type,
         objective: objective || "Networking and knowledge sharing",
@@ -716,7 +667,7 @@ export async function processDirectInMail(
       profileUrl: cleanUrl,
       name: `${safeIdentity.firstName} ${safeIdentity.lastName}`,
       type,
-      subjectLength: subject.length,
+      subjectLength: finalSubject.length,
       bodyLength: body.length,
     });
 
@@ -726,7 +677,7 @@ export async function processDirectInMail(
     try { await page.close(); } catch { /* non-fatal */ }
     pushLog("✓ Closed InMail tab — inbox messaging tab is untouched.");
 
-    return { success: true, type, subject: isInMail ? subject : undefined, body };
+    return { success: true, type, subject: finalSubject || undefined, body };
   } catch (error: any) {
     const msg = error.message || "Unknown error";
     pushLog(`❌ Failed: ${msg}`);

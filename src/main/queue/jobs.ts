@@ -12,6 +12,7 @@
 export const JOB_TYPES = {
   // LinkedIn Automation
   SCRAPE_PROFILE: "SCRAPE_PROFILE",
+  RUN_SEARCH_IMPORT: "RUN_SEARCH_IMPORT",
   SEND_CONNECTION: "SEND_CONNECTION",
   CHECK_ACCEPTANCE: "CHECK_ACCEPTANCE",
   SEND_WELCOME_DM: "SEND_WELCOME_DM",
@@ -44,6 +45,12 @@ export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];
 export interface ScrapeProfilePayload {
   leadId: string;
   linkedinUrl: string;
+  campaignId: string;
+}
+
+export interface RunSearchImportPayload {
+  leadId: string;
+  searchUrl: string;
   campaignId: string;
 }
 

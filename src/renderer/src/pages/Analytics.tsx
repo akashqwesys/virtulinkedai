@@ -344,7 +344,7 @@ export default function Analytics() {
                             : "none",
                       }}
                     >
-                      <span style={{ fontSize: "18px", display: "flex", alignItems:"center", justifyContent: "center", width: "24px", height: "24px" }}>
+                      <span style={{ fontSize: "19px", display: "flex", alignItems:"center", justifyContent: "center", width: "24px", height: "24px" }}>
                         {moduleIcons[act.module] || <Hash size={18}/>}
                       </span>
                       <div style={{ flex: 1 }}>
@@ -382,7 +382,7 @@ export default function Analytics() {
                     className="flex items-center gap-3"
                     style={{ marginBottom: "12px" }}
                   >
-                    <span style={{ fontSize: "16px", display: "inline-flex" }}>
+                    <span style={{ fontSize: "17px", display: "inline-flex" }}>
                       {moduleIcons[module] || <Hash size={16}/>}
                     </span>
                     <span

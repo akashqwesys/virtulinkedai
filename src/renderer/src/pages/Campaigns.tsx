@@ -93,17 +93,43 @@ export default function Campaigns() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isRemovingLead, setIsRemovingLead] = useState(false);
 
+  // Delete Confirmation Modal (replaces window.confirm to avoid losing window focus)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ campaignId: string; name: string } | null>(null);
+
   // Terminal State
   const [showTerminal, setShowTerminal] = useState(false);
 
+  // Ref to imperatively focus the name input after modal opens
+  // (needed because autoFocus breaks when window loses focus from native dialogs)
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
   const selectedCampaignIdRef = useRef<string | null>(null);
+  // Track modal open state in a ref so polling can skip re-renders while modal is open
+  // (prevents React re-renders from stealing cursor focus from modal inputs)
+  const isCreateModalOpenRef = useRef(false);
+
   useEffect(() => {
     selectedCampaignIdRef.current = selectedCampaignId;
   }, [selectedCampaignId]);
 
+  useEffect(() => {
+    isCreateModalOpenRef.current = showCreateModal;
+    // Imperatively focus the name input when modal opens
+    // autoFocus alone breaks when the window lost focus from native dialogs (e.g. window.confirm)
+    if (showCreateModal && createStep === "details") {
+      // Small delay ensures the DOM has rendered and the window has settled focus
+      const t = setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 80);
+      return () => clearTimeout(t);
+    }
+  }, [showCreateModal, createStep]);
+
   // Load real data from SQLite backend
   useEffect(() => {
     async function fetchCampaigns() {
+      // Skip re-render while create modal is open to preserve input focus/cursor
+      if (isCreateModalOpenRef.current) return;
       try {
         const data = await window.api.campaigns.list();
         setCampaigns((prev) => {
@@ -133,6 +159,8 @@ export default function Campaigns() {
     if (!selectedCampaignId) return;
     
     async function refreshActiveCampaign() {
+      // Skip re-render while create modal is open to preserve input focus/cursor
+      if (isCreateModalOpenRef.current) return;
       try {
         const details = await window.api.campaigns.getStatus(selectedCampaignId!);
         if (details) {
@@ -261,7 +289,17 @@ export default function Campaigns() {
 
 
   const handleDeleteCampaign = async (campaignId: string) => {
-    if (!window.confirm("⚠️ ARE YOU SURE? This will permanently delete the campaign and ALL associated leads and history. This cannot be undone.")) return;
+    // Find campaign name for the confirm dialog
+    const camp = campaigns.find(c => c.id === campaignId);
+    // Show in-app confirm dialog instead of window.confirm
+    // (window.confirm causes Electron to lose window focus, breaking modal inputs afterwards)
+    setDeleteConfirm({ campaignId, name: camp?.name || "this campaign" });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const { campaignId } = deleteConfirm;
+    setDeleteConfirm(null);
     try {
       const res = await (window as any).api.campaigns.delete(campaignId);
       if (res.success) {
@@ -341,37 +379,40 @@ export default function Campaigns() {
 
   if (!selectedCampaign) {
     return (
-      <div style={{ padding: "32px", height: "100%", overflow: "auto" }}>
-        <div className="flex justify-between items-center mb-8">
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div className="page-header">
           <div>
-            <h1 className="text-2xl font-bold mb-2">Campaigns</h1>
-            <p className="text-muted">
-              Manage your outreach workflows inspired by LinkedHelper
+            <h1 className="page-title">Campaigns</h1>
+            <p className="page-subtitle">
+              Manage your outreach workflows
             </p>
           </div>
-          <button
-            className="btn btn-primary"
-            onClick={() => { setShowCreateModal(true); setCreateError(null); }}
-          >
-            <Plus size={16} /> New Campaign
-          </button>
-        </div>
-
-        {campaigns.length === 0 ? (
-          <div className="card text-center" style={{ padding: "var(--space-8)" }}>
-            <div style={{ marginBottom: "16px", color: "var(--accent-primary)", display: "flex", justifyContent: "center" }}><Rocket size={48} /></div>
-            <h3 className="text-xl font-bold mb-2">Ready to automate?</h3>
-            <p className="text-muted mb-6">
-              Create your first LinkedHelper-style workflow.
-            </p>
+          <div className="flex gap-3">
             <button
               className="btn btn-primary"
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => { setShowCreateModal(true); setCreateError(null); }}
             >
-              Create Campaign
+              <Plus size={16} /> New Campaign
             </button>
           </div>
-        ) : (
+        </div>
+
+        <div className="page-body">
+          {campaigns.length === 0 ? (
+            <div className="card text-center" style={{ padding: "64px 32px" }}>
+              <div style={{ marginBottom: "16px", color: "var(--accent-primary)", display: "flex", justifyContent: "center" }}><Rocket size={48} /></div>
+              <h3 className="text-xl font-bold mb-2">Ready to automate?</h3>
+              <p className="text-muted mb-6">
+                Create your first automation workflow.
+              </p>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowCreateModal(true)}
+              >
+                Create Campaign
+              </button>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {campaigns.map((campaign) => (
               <div
@@ -426,8 +467,11 @@ export default function Campaigns() {
                       {
                         campaign.leads.filter(
                           (l) =>
-                            l.status === "connected" ||
-                            l.status === "meeting_booked",
+                            l.status === "connection_accepted" ||
+                            l.status === "meeting_booked" ||
+                            l.status === "welcome_sent" ||
+                            l.status === "replied" ||
+                            l.status === "in_conversation"
                         ).length
                       }
                     </div>
@@ -438,6 +482,7 @@ export default function Campaigns() {
             ))}
           </div>
         )}
+        </div>
 
         {/* Create Modal */}
         {showCreateModal && (
@@ -450,10 +495,16 @@ export default function Campaigns() {
               alignItems: "center",
               justifyContent: "center",
               zIndex: 1000,
+              isolation: "isolate",
             }}
-            onClick={(e) => { if (e.target === e.currentTarget && !isCreating) closeCreateModal(); }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget && !isCreating) closeCreateModal(); }}
           >
-            <div className="card" style={{ width: "450px", maxHeight: "90vh", overflowY: "auto" }}>
+            <div
+              className="card"
+              style={{ width: "450px", maxHeight: "90vh", overflowY: "auto" }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               {createStep === "details" ? (
                 <>
                   <h2 className="text-xl font-bold mb-4">Create New Campaign</h2>
@@ -462,12 +513,12 @@ export default function Campaigns() {
                       Campaign Name
                     </label>
                     <input
+                      ref={nameInputRef}
                       className="input"
                       style={{ width: "100%" }}
                       value={newCampaignName}
                       onChange={(e) => setNewCampaignName(e.target.value)}
                       placeholder="e.g. CEO Outreach"
-                      autoFocus
                       disabled={isCreating}
                       onKeyDown={(e) => { if (e.key === "Enter" && newCampaignName.trim()) setCreateStep("import"); }}
                     />
@@ -577,7 +628,7 @@ export default function Campaigns() {
                       border: "1px solid rgba(255, 59, 48, 0.1)",
                       borderRadius: "8px",
                       color: "var(--accent-danger)",
-                      fontSize: "13px",
+                      fontSize: "14px",
                       display: "flex",
                       alignItems: "center",
                       gap: "6px"
@@ -698,7 +749,7 @@ export default function Campaigns() {
                 transition: "all 0.18s ease",
               }}
             >
-              <span style={{ fontSize: "14px" }}>{tab.icon}</span>
+              <span style={{ fontSize: "15px" }}>{tab.icon}</span>
               {tab.label}
             </button>
           ))}
@@ -767,7 +818,7 @@ export default function Campaigns() {
                           alignItems: "center",
                           justifyContent: "center",
                           fontWeight: "bold",
-                          fontSize: "12px",
+                          fontSize: "13px",
                           zIndex: 2,
                         }}
                       >
@@ -842,35 +893,35 @@ export default function Campaigns() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       className="btn btn-sm btn-secondary"
-                      style={{ fontSize: "12px", padding: "6px" }}
+                      style={{ fontSize: "13px", padding: "6px" }}
                       onClick={() => addStep("extract")}
                     >
                       <Search size={14} className="mr-1"/> Extract
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
-                      style={{ fontSize: "12px", padding: "6px" }}
+                      style={{ fontSize: "13px", padding: "6px" }}
                       onClick={() => addStep("visit")}
                     >
                       <Eye size={14} className="mr-1"/> Visit
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
-                      style={{ fontSize: "12px", padding: "6px" }}
+                      style={{ fontSize: "13px", padding: "6px" }}
                       onClick={() => addStep("connect")}
                     >
                       <UserPlus size={14} className="mr-1"/> Connect
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
-                      style={{ fontSize: "12px", padding: "6px" }}
+                      style={{ fontSize: "13px", padding: "6px" }}
                       onClick={() => addStep("message")}
                     >
                       <MessageSquare size={14} className="mr-1"/> Message
                     </button>
                     <button
                       className="btn btn-sm btn-secondary"
-                      style={{ fontSize: "12px", padding: "6px" }}
+                      style={{ fontSize: "13px", padding: "6px" }}
                       onClick={() => addStep("email")}
                     >
                       <Mail size={14} className="mr-1"/> Email
@@ -885,7 +936,7 @@ export default function Campaigns() {
               {selectedStep ? (
                 <div style={{ maxWidth: "600px" }}>
                   <div className="flex items-center gap-3 mb-6">
-                    <span style={{ fontSize: "32px" }}>
+                    <span style={{ fontSize: "33px" }}>
                       {stepIcons[selectedStep.type]}
                     </span>
                     <h2 className="text-2xl font-bold">Action Settings</h2>
@@ -1038,7 +1089,7 @@ export default function Campaigns() {
                       <h3 className="font-bold text-sm" style={{ color: "var(--text-main)", letterSpacing: "0.2px" }}>
                         {col.name}
                       </h3>
-                      <span className="bg-white/10 px-1.5 text-[10px] font-bold rounded-full py-0 text-muted border border-white/5">
+                      <span className="bg-white/10 px-1.5 text-[11px] font-bold rounded-full py-0 text-muted border border-white/5">
                         {colLeads.length}
                       </span>
                     </div>
@@ -1047,7 +1098,7 @@ export default function Campaigns() {
                         onClick={() => handlePrioritize(col.id)}
                         style={{
                           padding: "3px 8px",
-                          fontSize: "10px",
+                          fontSize: "11px",
                           fontWeight: "600",
                           borderRadius: "12px",
                           cursor: "pointer",
@@ -1094,25 +1145,25 @@ export default function Campaigns() {
                         onMouseOut={(e) => e.currentTarget.style.transform = "none"}
                         onClick={() => setSelectedLead(lead)}
                       >
-                        <div className="font-bold" style={{ color: "var(--text-main)", fontSize: "13px", lineHeight: "1.2", wordBreak: "break-word" }}>
+                        <div className="font-bold" style={{ color: "var(--text-main)", fontSize: "14px", lineHeight: "1.2", wordBreak: "break-word" }}>
                           {lead.name}
                         </div>
                         <div
                           className="text-muted"
-                          style={{ fontSize: "11px", lineHeight: "1.3" }}
+                          style={{ fontSize: "12px", lineHeight: "1.3" }}
                         >
                           {lead.title}
                         </div>
                         <div
-                          style={{ color: "var(--text-secondary)", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}
+                          style={{ color: "var(--text-secondary)", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
                         >
-                          <span style={{ opacity: 0.6, fontSize: "12px" }}>🏢</span> 
+                          <span style={{ opacity: 0.6, fontSize: "13px" }}>🏢</span> 
                           <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.company}</span>
                         </div>
                         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2px" }}>
                           <span 
                             style={{ 
-                              fontSize: "9px",
+                              fontSize: "10px",
                               fontWeight: "bold",
                               textTransform: "uppercase",
                               letterSpacing: "0.5px",
@@ -1236,7 +1287,7 @@ export default function Campaigns() {
                 <span className="text-xs text-muted font-bold uppercase">Name</span>
                 <div className="font-semibold flex items-center gap-2">
                    {selectedLead.name}
-                   <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full">{selectedLead.connectionDegree}</span>
+                   <span className="text-[11px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full">{selectedLead.connectionDegree}</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1339,6 +1390,52 @@ export default function Campaigns() {
               </button>
             </div>
         </Modal>
+      )}
+      {/* In-App Delete Confirmation Modal — replaces window.confirm to prevent window focus loss */}
+      {deleteConfirm && (
+        <div
+          style={{
+            position: "fixed", inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 2000, isolation: "isolate",
+          }}
+        >
+          <div
+            className="card"
+            style={{ width: "400px", padding: "28px 28px 24px" }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,59,48,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Trash2 size={20} style={{ color: "var(--accent-danger)" }} />
+              </div>
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "2px" }}>Delete Campaign?</h3>
+                <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", margin: 0 }}>This action cannot be undone</p>
+              </div>
+            </div>
+            <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "24px", lineHeight: 1.6 }}>
+              This will permanently delete <strong style={{ color: "var(--text-main)" }}>"{deleteConfirm.name}"</strong> and all associated leads, conversation history, and automation data.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn"
+                style={{ background: "var(--accent-danger)", color: "#fff", border: "none" }}
+                onClick={confirmDelete}
+              >
+                <Trash2 size={14} /> Delete Campaign
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

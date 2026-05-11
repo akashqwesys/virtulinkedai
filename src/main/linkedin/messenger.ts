@@ -1,4 +1,4 @@
-﻿/**
+/**
  * LinkedIn Messenger - DM Management & Auto-Reply Chatbot
  *
  * Handles sending/reading LinkedIn messages with natural behavior.
@@ -646,7 +646,7 @@ export async function processChatbotMessage(
     }
   }
 
-  // Generate the reply via Mixtral/Ollama
+  // Generate the reply via NVIDIA API (build.nvidia.com)
   const replyRaw = await generateChatbotReply(
     profile,
     history,
